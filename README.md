@@ -101,6 +101,7 @@ frontend only ever calls our own `/api/*` routes.
 - `docs/PLAY_STORE.md` — Play Store listing checklist (nothing submitted automatically)
 - `docs/TESTING_CHECKLIST.md` — what's been tested here vs. what needs a real browser/device
 - `docs/DEPLOYMENT_CHECKLIST.md` — production readiness checklist
+- `docs/DEPLOY_RENDER.md` — exact step-by-step guide to deploy this app to a free public URL on Render (recommended for this stage); `render.yaml` and `Procfile` in the repo root support this
 
 ## Security notes
 
