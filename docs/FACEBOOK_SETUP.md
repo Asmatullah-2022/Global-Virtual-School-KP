@@ -47,9 +47,16 @@ only ever calls our own `/api/facebook/feed`.
 ## Behavior without credentials
 
 - No `PAGE_ACCESS_TOKEN`/`META_GRAPH_VERSION` → `/api/facebook/feed` returns
-  `configured:false` and the app shows: *"Official Facebook updates will
-  appear here when the GVS Page connection is activated."* plus a link to
-  the live Facebook Page. Nothing is faked.
+  `status:"demo"`, `configured:false`, and two posts clearly marked as
+  **Demo Content** (`isDemo:true`, `[Demo Content]` prefix in the text, a
+  dashed gold border in the UI) so the Home/Updates screens can be built and
+  tested end-to-end before real credentials exist. A link to the live
+  Facebook Page is always shown alongside it. Nothing is presented as a real
+  GVS announcement.
+- The switch to the real feed is automatic: `getFeed()` in
+  `server/services/facebookService.js` checks `config.isFacebookConfigured()`
+  on every call. Set both env vars and restart the server — no code change,
+  no separate "enable" step.
 - No `WEBHOOK_VERIFY_TOKEN`/`META_APP_SECRET` → the webhook routes respond
   `503` and log a warning; they never silently pretend to work.
 

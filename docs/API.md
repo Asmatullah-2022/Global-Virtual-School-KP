@@ -10,11 +10,9 @@ All endpoints return JSON. Authenticated endpoints expect `Authorization: Bearer
 | POST | `/login` | none | `{email,password}` → `{token,user}` |
 | GET | `/me` | Bearer | Returns the current user |
 
-Provisioning the first admin: since admins can't self-register through the API,
-create one directly against the data store (or a one-off script) before launch,
-e.g. `node -e "..."` using `bcryptjs` to hash a password and appending to
-`server/data/users.json` with `role: "admin"`. Replace this with a proper
-seed/CLI script before production.
+Provisioning the first admin: since admins can't self-register through the
+API, run `npm run create-admin -- --name "..." --email "..." --password "..."`
+(wraps `server/scripts/createAdmin.js`) before launch.
 
 ## Facebook (`/api/facebook`)
 | Method | Path | Notes |
@@ -55,6 +53,10 @@ seed/CLI script before production.
 | GET | `/system-status` | Facebook/AI/auth configuration status |
 | GET | `/analytics` | Aggregate, privacy-conscious counts only |
 
-There is currently no admin **UI** — only the API. See `docs/DEPLOYMENT_CHECKLIST.md`
-for what's needed to add one (it can be a simple authenticated page under `public/admin/`
-calling these same endpoints).
+There is now a web admin dashboard: log in as an admin user and go to
+Profile → Admin Dashboard (`#/admin` in the app). It covers Overview
+(system status + analytics), Users (read-only list), and CRUD for Updates,
+Live Classes, and Language Courses. Editing the grade/subject taxonomy and
+the AI knowledge base is not yet exposed in the UI — use the
+`/api/admin/collections/grades` and `/api/admin/collections/knowledgeBase`
+endpoints above directly for those.

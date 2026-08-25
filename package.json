@@ -6,7 +6,9 @@
   "description": "Global Virtual School (GVS) mobile-first PWA and API — Government of Khyber Pakhtunkhwa",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "check": "node server/scripts/checkSyntax.js",
+    "create-admin": "node server/scripts/createAdmin.js"
   },
   "engines": {
     "node": ">=18.0.0"

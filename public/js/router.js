@@ -1,10 +1,11 @@
 const Router = {
-  routes: ['home', 'learn', 'classes', 'updates', 'ai', 'languages', 'profile', 'login', 'register', 'dashboard'],
+  routes: ['home', 'learn', 'classes', 'updates', 'ai', 'languages', 'profile', 'login', 'register', 'dashboard', 'admin'],
   bottomNavViews: ['home', 'learn', 'classes', 'updates', 'profile'],
 
   go(view) {
     if (!this.routes.includes(view)) view = 'home';
     if (view !== 'learn') GVS.learnPath = { grade: null, subjectId: null };
+    if (view !== 'languages') GVS.languageCourseId = null;
     location.hash = `#/${view}`;
   },
 
@@ -15,6 +16,9 @@ const Router = {
 
     if (resolvedView === 'learn') {
       GVS.learnPath = { grade: a || null, subjectId: b || null };
+    }
+    if (resolvedView === 'languages') {
+      GVS.languageCourseId = a || null;
     }
 
     GVS.view = resolvedView;
@@ -47,6 +51,8 @@ const Router = {
         else location.hash = `#/learn/${GVS.learnPath.grade}`;
       })
     );
+    scope.querySelectorAll('[data-course]').forEach((el) => el.addEventListener('click', () => (location.hash = `#/languages/${el.dataset.course}`)));
+    scope.querySelectorAll('[data-back-languages]').forEach((el) => el.addEventListener('click', () => (location.hash = '#/languages')));
     scope.querySelectorAll('[data-share]').forEach((el) =>
       el.addEventListener('click', async () => {
         const url = el.dataset.share;
