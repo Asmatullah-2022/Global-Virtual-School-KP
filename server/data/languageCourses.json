@@ -1,0 +1,7 @@
+[
+  { "id": "lang_zh", "name": "Chinese", "flag": "🇨🇳", "status": "published", "overview": "Introductory Mandarin Chinese for beginners.", "lessons": [] },
+  { "id": "lang_en", "name": "English", "flag": "🇬🇧", "status": "published", "overview": "English language proficiency course.", "lessons": [] },
+  { "id": "lang_ko", "name": "Korean", "flag": "🇰🇷", "status": "published", "overview": "Introductory Korean for beginners.", "lessons": [] },
+  { "id": "lang_de", "name": "German", "flag": "🇩🇪", "status": "published", "overview": "Introductory German for beginners.", "lessons": [] },
+  { "id": "lang_ja", "name": "Japanese", "flag": "🇯🇵", "status": "published", "overview": "Introductory Japanese for beginners.", "lessons": [] }
+]

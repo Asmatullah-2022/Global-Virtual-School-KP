@@ -1,0 +1,63 @@
+[
+  { "id": "gr_6", "grade": 6, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "science", "name": "General Science" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "pakstudies", "name": "Pakistan Studies" }
+  ]},
+  { "id": "gr_7", "grade": 7, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "science", "name": "General Science" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "pakstudies", "name": "Pakistan Studies" }
+  ]},
+  { "id": "gr_8", "grade": 8, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "science", "name": "General Science" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "pakstudies", "name": "Pakistan Studies" }
+  ]},
+  { "id": "gr_9", "grade": 9, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "physics", "name": "Physics" },
+    { "id": "chemistry", "name": "Chemistry" },
+    { "id": "biology", "name": "Biology" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "computer", "name": "Computer Science" }
+  ]},
+  { "id": "gr_10", "grade": 10, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "physics", "name": "Physics" },
+    { "id": "chemistry", "name": "Chemistry" },
+    { "id": "biology", "name": "Biology" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "computer", "name": "Computer Science" }
+  ]},
+  { "id": "gr_11", "grade": 11, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "physics", "name": "Physics" },
+    { "id": "chemistry", "name": "Chemistry" },
+    { "id": "biology", "name": "Biology" },
+    { "id": "english", "name": "English" },
+    { "id": "computer", "name": "Computer Science" }
+  ]},
+  { "id": "gr_12", "grade": 12, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "physics", "name": "Physics" },
+    { "id": "chemistry", "name": "Chemistry" },
+    { "id": "biology", "name": "Biology" },
+    { "id": "english", "name": "English" },
+    { "id": "computer", "name": "Computer Science" }
+  ]}
+]
