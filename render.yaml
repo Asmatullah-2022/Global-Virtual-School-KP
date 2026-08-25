@@ -1,0 +1,45 @@
+# Render Blueprint for the GVS Mobile App.
+# Deploys the single Express server (which also serves the PWA frontend
+# from public/) as one Render Web Service — no separate frontend deploy
+# is needed since server/index.js serves both API and static assets.
+#
+# Usage: Render dashboard → New → Blueprint → connect this repo → Render
+# reads this file automatically. See docs/DEPLOY_RENDER.md for the full
+# step-by-step walkthrough.
+services:
+  - type: web
+    name: gvs-mobile-app
+    runtime: node
+    plan: free
+    branch: main-base
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: PAGE_ID
+        value: "61592435229097"
+      # Left unset intentionally (sync: false = "set manually in the Render
+      # dashboard, never stored in this file or in git"). The app runs fine
+      # with these unset — Facebook shows demo content, AI Teacher shows an
+      # honest "not configured" message, webhooks respond 503 — until real
+      # values are entered here later.
+      - key: META_GRAPH_VERSION
+        sync: false
+      - key: PAGE_ACCESS_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: AI_PROVIDER
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
