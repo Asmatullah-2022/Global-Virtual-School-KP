@@ -19,6 +19,12 @@ const API = (() => {
     }
     let data = null;
     try { data = await res.json(); } catch { /* empty body */ }
+    if (res.status === 401 && t) {
+      // Token missing/expired/invalid: drop the stale session so the UI
+      // reflects logged-out state instead of silently failing every call.
+      localStorage.removeItem('gvs_token');
+      localStorage.removeItem('gvs_user');
+    }
     if (!res.ok) {
       const err = new Error((data && data.error) || `Request failed (${res.status}).`);
       err.status = res.status;

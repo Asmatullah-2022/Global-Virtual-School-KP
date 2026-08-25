@@ -17,6 +17,13 @@ Views.home = {
       <div class="globe">🌍</div>
     </section>
 
+    <section class="stats">
+      <div><b>6–12</b><span>Grades</span></div>
+      <div><b>24/7</b><span>AI Teacher</span></div>
+      <div><b>5</b><span>Languages</span></div>
+      <div><b>KP</b><span>Province-wide</span></div>
+    </section>
+
     <section class="section">
       <div class="section-head"><h2>Quick Access</h2></div>
       <div class="grid four">
@@ -246,6 +253,13 @@ Views.ai = {
 // ---------------- LANGUAGE ACADEMY ----------------
 Views.languages = {
   render() {
+    if (GVS.languageCourseId) {
+      return `
+      <section class="section">
+        <div class="breadcrumb"><button data-back-languages="1">Language Academy</button> / <span id="lang-course-name">Course</span></div>
+        <div id="lang-course-body">${skeletons(2)}</div>
+      </section>`;
+    }
     return `
     <section class="section">
       <h2>GVS Language Academy</h2>
@@ -254,13 +268,38 @@ Views.languages = {
     </section>`;
   },
   async afterRender() {
+    if (GVS.languageCourseId) return this.afterRenderDetail();
     try {
       const { courses } = await API.get('/api/content/language-courses');
-      document.querySelector('#lang-grid').innerHTML = courses
-        .map((c) => `<button class="course"><span>${c.flag} LANGUAGE COURSE</span><b>${esc(c.name)}</b><small>${esc(c.overview || '')}</small></button>`)
-        .join('');
+      document.querySelector('#lang-grid').innerHTML = courses.length
+        ? courses.map((c) => `<button class="course" data-course="${c.id}"><span>${c.flag} LANGUAGE COURSE</span><b>${esc(c.name)}</b><small>${esc(c.overview || '')}</small></button>`).join('')
+        : stateBox({ emoji: '🌐', title: 'No language courses yet', body: 'An administrator has not published any courses yet.' });
     } catch (e) {
       document.querySelector('#lang-grid').innerHTML = stateBox({ emoji: '⚠️', title: 'Unable to load courses', body: e.message, retry: true });
+    }
+  },
+  async afterRenderDetail() {
+    const body = document.querySelector('#lang-course-body');
+    try {
+      const { course } = await API.get(`/api/content/language-courses/${GVS.languageCourseId}`);
+      document.querySelector('#lang-course-name').textContent = course.name;
+      body.innerHTML = `
+        <div class="ai-box" style="max-width:100%">
+          <div class="ai-avatar">${esc(course.flag)}</div>
+          <h3>${esc(course.name)}</h3>
+          <p class="muted">${esc(course.overview || '')}</p>
+          <div class="grid four" style="margin-top:14px">
+            <button class="tile"><span class="ic">📖</span><b>Vocabulary</b><span>${(course.lessons || []).length} items</span></button>
+            <button class="tile"><span class="ic">🔊</span><b>Pronunciation</b><span>Listen & repeat</span></button>
+            <button class="tile"><span class="ic">🎧</span><b>Listening</b><span>Practice audio</span></button>
+            <button class="tile"><span class="ic">❓</span><b>Quiz</b><span>Test yourself</span></button>
+          </div>
+          <div class="progress-bar" style="margin-top:16px"><span style="width:0%"></span></div>
+          <p class="muted" style="margin-top:6px">Your progress: 0%</p>
+        </div>
+        ${(course.lessons || []).length === 0 ? stateBox({ emoji: '🚧', title: 'Lessons coming soon', body: 'An administrator has not published lesson content for this course yet.' }) : ''}`;
+    } catch (e) {
+      body.innerHTML = stateBox({ emoji: '⚠️', title: 'Unable to load course', body: e.message, retry: true });
     }
   },
 };
@@ -291,16 +330,27 @@ Views.profile = {
       </div>
       <div class="grid two" style="margin-top:14px">
         <button class="tile" data-nav="dashboard"><span class="ic">📊</span><b>My Dashboard</b><span>Progress & activity</span></button>
+        ${u.role === 'admin' ? `<button class="tile" data-nav="admin"><span class="ic">🛠️</span><b>Admin Dashboard</b><span>Manage content</span></button>` : ''}
         <button class="tile" data-external="lms"><span class="ic">🎓</span><b>Official LMS</b><span>lms.gvskp.org</span></button>
         <button class="tile" data-external="website"><span class="ic">🌐</span><b>Official Website</b><span>gvskp.org</span></button>
         <button class="tile" data-external="facebook"><span class="ic">📘</span><b>GVS Facebook</b><span>Official page</span></button>
         <button class="tile" id="logout-btn"><span class="ic">🚪</span><b>Logout</b><span>End your session</span></button>
+      </div>
+      <div class="section-head" style="margin-top:22px"><h3>Settings</h3></div>
+      <div class="card" style="max-width:480px">
+        <label style="font-size:12.5px;font-weight:700;color:var(--navy);display:flex;justify-content:space-between;align-items:center">Push notifications <input type="checkbox" id="pref-notify" ${localStorage.getItem('gvs_pref_notify') !== '0' ? 'checked' : ''} /></label>
+        <label style="font-size:12.5px;font-weight:700;color:var(--navy);display:flex;justify-content:space-between;align-items:center;margin-top:10px">Low-bandwidth mode <input type="checkbox" id="pref-lowbw" ${localStorage.getItem('gvs_pref_lowbw') === '1' ? 'checked' : ''} /></label>
+        <p class="muted" style="margin-top:10px">Preferences are saved on this device. Push delivery requires notification permission and a configured push service (not yet enabled — see README).</p>
       </div>
     </section>`;
   },
   afterRender() {
     const btn = document.querySelector('#logout-btn');
     if (btn) btn.addEventListener('click', () => { GVS.logout(); Router.go('home'); });
+    const notify = document.querySelector('#pref-notify');
+    if (notify) notify.addEventListener('change', () => localStorage.setItem('gvs_pref_notify', notify.checked ? '1' : '0'));
+    const lowbw = document.querySelector('#pref-lowbw');
+    if (lowbw) lowbw.addEventListener('change', () => localStorage.setItem('gvs_pref_lowbw', lowbw.checked ? '1' : '0'));
   },
 };
 
@@ -420,6 +470,190 @@ Views.dashboard = {
   },
 };
 
+// ---------------- ADMIN DASHBOARD ----------------
+Views.admin = {
+  render() {
+    if (!GVS.isAuthed() || GVS.user.role !== 'admin') {
+      return stateBoxWrap('The admin dashboard is only available to GVS administrator accounts.');
+    }
+    return `
+    <section class="section">
+      <h2>Admin Dashboard</h2>
+      <div class="admin-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        ${['overview', 'updates', 'liveClasses', 'languageCourses', 'users'].map((t, i) => `<button class="ghost admin-tab" data-tab="${t}" style="padding:9px 14px${i === 0 ? ';background:var(--green);color:#fff;border-color:var(--green)' : ''}">${adminTabLabel(t)}</button>`).join('')}
+      </div>
+      <div id="admin-body">${skeletons(3)}</div>
+    </section>`;
+  },
+  afterRender() {
+    if (!GVS.isAuthed() || GVS.user.role !== 'admin') return;
+    const tabs = document.querySelectorAll('.admin-tab');
+    tabs.forEach((btn) =>
+      btn.addEventListener('click', () => {
+        tabs.forEach((b) => { b.style.background = ''; b.style.color = ''; b.style.borderColor = ''; });
+        btn.style.background = 'var(--green)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--green)';
+        renderAdminTab(btn.dataset.tab);
+      })
+    );
+    renderAdminTab('overview');
+  },
+};
+
+function adminTabLabel(t) {
+  return { overview: 'Overview', updates: 'Updates', liveClasses: 'Live Classes', languageCourses: 'Language Courses', users: 'Users' }[t];
+}
+
+async function renderAdminTab(tab) {
+  const body = document.querySelector('#admin-body');
+  body.innerHTML = skeletons(3);
+  try {
+    if (tab === 'overview') return await renderAdminOverview(body);
+    if (tab === 'updates') return await renderAdminCollection(body, 'updates', updateFieldSchema());
+    if (tab === 'liveClasses') return await renderAdminCollection(body, 'liveClasses', liveClassFieldSchema());
+    if (tab === 'languageCourses') return await renderAdminCollection(body, 'languageCourses', languageCourseFieldSchema());
+    if (tab === 'users') return await renderAdminUsers(body);
+  } catch (e) {
+    body.innerHTML = stateBox({ emoji: '⚠️', title: 'Unable to load', body: e.message, retry: true });
+    const retry = body.querySelector('[data-retry]');
+    if (retry) retry.addEventListener('click', () => renderAdminTab(tab));
+  }
+}
+
+async function renderAdminOverview(body) {
+  const [status, analytics] = await Promise.all([API.get('/api/admin/system-status'), API.get('/api/admin/analytics')]);
+  body.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><b>${status.facebook.configured ? '✅' : '⏳'}</b><span>Facebook Feed</span></div>
+      <div class="stat-card"><b>${status.facebook.webhookConfigured ? '✅' : '⏳'}</b><span>Facebook Webhooks</span></div>
+      <div class="stat-card"><b>${status.aiTeacher.configured ? '✅' : '⏳'}</b><span>AI Teacher (${esc(status.aiTeacher.provider || 'none')})</span></div>
+    </div>
+    <div class="section-head" style="margin-top:20px"><h3>Analytics</h3></div>
+    <div class="stat-grid">
+      <div class="stat-card"><b>${analytics.activeUsers}</b><span>Total Users</span></div>
+      <div class="stat-card"><b>${analytics.liveClassesScheduled}</b><span>Live Classes</span></div>
+      <div class="stat-card"><b>${analytics.languageCourseCount}</b><span>Language Courses</span></div>
+    </div>
+    <div class="section-head" style="margin-top:20px"><h3>Users by Role</h3></div>
+    <div class="grid four">${Object.entries(analytics.byRole).map(([role, n]) => `<div class="card"><b>${n}</b><span class="muted">${esc(role)}</span></div>`).join('') || '<span class="muted">No users yet.</span>'}</div>
+    <p class="muted" style="margin-top:16px">Environment: ${esc(status.environment)} · ${status.facebook.cachedPosts} cached Facebook posts</p>`;
+}
+
+async function renderAdminUsers(body) {
+  const { users } = await API.get('/api/admin/users');
+  body.innerHTML = users.length
+    ? `<div style="overflow-x:auto"><table class="admin-table" style="width:100%;border-collapse:collapse">
+        <thead><tr style="text-align:left;border-bottom:2px solid var(--line)"><th style="padding:8px">Name</th><th style="padding:8px">Email</th><th style="padding:8px">Role</th><th style="padding:8px">Grade</th><th style="padding:8px">School</th></tr></thead>
+        <tbody>${users.map((u) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:8px">${esc(u.name)}</td><td style="padding:8px">${esc(u.email)}</td><td style="padding:8px">${esc(u.role)}</td><td style="padding:8px">${esc(u.grade || '—')}</td><td style="padding:8px">${esc(u.school || '—')}</td></tr>`).join('')}</tbody>
+      </table></div>`
+    : stateBox({ emoji: '👥', title: 'No users yet', body: 'Registered students, teachers, parents and schools will appear here.' });
+}
+
+function updateFieldSchema() {
+  return [
+    { key: 'title', label: 'Title', type: 'text', required: true },
+    { key: 'body', label: 'Body', type: 'textarea', required: true },
+    { key: 'category', label: 'Category', type: 'select', options: ['announcement', 'course', 'event', 'notice'] },
+    { key: 'date', label: 'Date', type: 'date', required: true },
+    { key: 'expiresAt', label: 'Expires At (optional)', type: 'date' },
+    { key: 'imageUrl', label: 'Image URL (optional)', type: 'text' },
+    { key: 'link', label: 'Link (optional)', type: 'text' },
+    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'published'] },
+  ];
+}
+function liveClassFieldSchema() {
+  return [
+    { key: 'subject', label: 'Subject', type: 'text', required: true },
+    { key: 'grade', label: 'Grade', type: 'select', options: ['6', '7', '8', '9', '10', '11', '12'], required: true },
+    { key: 'teacher', label: 'Teacher', type: 'text' },
+    { key: 'date', label: 'Date', type: 'date', required: true },
+    { key: 'time', label: 'Time', type: 'time', required: true },
+    { key: 'durationMinutes', label: 'Duration (minutes)', type: 'number' },
+    { key: 'joinUrl', label: 'Join URL (admin-provided meeting link)', type: 'text' },
+  ];
+}
+function languageCourseFieldSchema() {
+  return [
+    { key: 'name', label: 'Name', type: 'text', required: true },
+    { key: 'flag', label: 'Flag emoji', type: 'text' },
+    { key: 'overview', label: 'Overview', type: 'textarea' },
+    { key: 'status', label: 'Status', type: 'select', options: ['published', 'unpublished'] },
+  ];
+}
+
+async function renderAdminCollection(body, collection, schema) {
+  const { items } = await API.get(`/api/admin/collections/${collection}`);
+  body.innerHTML = `
+    <button class="primary" id="admin-add-btn" style="margin-bottom:14px">+ Add New</button>
+    <div id="admin-form-wrap"></div>
+    <div id="admin-list" class="grid two">${items.length ? items.map((it) => adminItemCard(it, collection, schema)).join('') : stateBox({ emoji: '📭', title: 'Nothing here yet', body: 'Use "Add New" to publish the first item.' })}</div>`;
+
+  document.querySelector('#admin-add-btn').addEventListener('click', () => {
+    document.querySelector('#admin-form-wrap').innerHTML = adminForm(schema, {});
+    bindAdminForm(collection, schema, null, body);
+  });
+  body.querySelectorAll('[data-edit]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const item = items.find((i) => i.id === btn.dataset.edit);
+      document.querySelector('#admin-form-wrap').innerHTML = adminForm(schema, item);
+      bindAdminForm(collection, schema, item.id, body);
+    })
+  );
+  body.querySelectorAll('[data-delete]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this item? This cannot be undone.')) return;
+      await API.del(`/api/admin/collections/${collection}/${btn.dataset.delete}`);
+      renderAdminCollection(body, collection, schema);
+    })
+  );
+}
+
+function adminItemCard(item, collection, schema) {
+  const primary = item.title || item.subject || item.name || item.id;
+  const secondary = item.status || item.computedStatus || item.category || '';
+  return `<div class="card">
+    <b>${esc(primary)}</b><span class="pill">${esc(secondary)}</span>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="secondary" style="padding:8px 12px" data-edit="${item.id}">Edit</button>
+      <button class="ghost" style="padding:8px 12px" data-delete="${item.id}">Delete</button>
+    </div>
+  </div>`;
+}
+
+function adminForm(schema, values) {
+  const fields = schema
+    .map((f) => {
+      const val = esc(values[f.key] ?? '');
+      if (f.type === 'textarea') return `<label>${f.label}</label><textarea data-field="${f.key}" style="width:100%;min-height:80px">${val}</textarea>`;
+      if (f.type === 'select') return `<label>${f.label}</label><select data-field="${f.key}">${f.options.map((o) => `<option value="${o}" ${values[f.key] === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+      return `<label>${f.label}</label><input type="${f.type}" data-field="${f.key}" value="${val}" />`;
+    })
+    .join('');
+  return `<div class="form-card" style="max-width:520px;margin:0 0 16px">
+    ${fields}
+    <button class="primary" id="admin-form-save" style="width:100%;margin-top:14px">Save</button>
+    <div id="admin-form-msg"></div>
+  </div>`;
+}
+
+function bindAdminForm(collection, schema, editId, body) {
+  document.querySelector('#admin-form-save').addEventListener('click', async () => {
+    const payload = {};
+    schema.forEach((f) => {
+      const el = document.querySelector(`[data-field="${f.key}"]`);
+      payload[f.key] = f.type === 'number' ? Number(el.value) : el.value;
+    });
+    const msg = document.querySelector('#admin-form-msg');
+    try {
+      if (editId) await API.put(`/api/admin/collections/${collection}/${editId}`, payload);
+      else await API.post(`/api/admin/collections/${collection}`, payload);
+      document.querySelector('#admin-form-wrap').innerHTML = '';
+      renderAdminCollection(body, collection, schema);
+    } catch (e) {
+      msg.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+    }
+  });
+}
+
 function stateBoxWrap(msg) {
   return `<section class="section">${stateBox({ emoji: '🔒', title: 'Sign in required', body: msg })}<button class="primary" data-nav="login" style="margin-top:14px">Log in</button></section>`;
 }
@@ -447,7 +681,8 @@ const FeedWidget = {
           title: u.title, body: u.body, image: u.imageUrl, date: u.date, link: u.link, source: 'GVS', kind: 'update',
         })),
         ...(fb.posts || []).map((p) => ({
-          title: null, body: p.message, image: p.full_picture, date: p.created_time, link: p.permalink_url, source: 'GVS Facebook', kind: 'facebook',
+          title: null, body: p.message, image: p.full_picture, date: p.created_time, link: p.permalink_url,
+          source: p.isDemo ? 'Demo Content' : 'GVS Facebook', kind: p.isDemo ? 'demo' : 'facebook',
         })),
       ];
 
@@ -467,7 +702,7 @@ const FeedWidget = {
 };
 
 function statusLabel(fb) {
-  if (!fb.configured) return 'Official Facebook updates will appear here when the GVS Page connection is activated.';
+  if (fb.status === 'demo') return '🧪 Demo Content — real GVS Facebook updates will replace this once the Page connection is activated.';
   if (fb.status === 'live') return `Live GVS updates · Last updated: ${fmtDate(fb.updatedAt)}`;
   if (fb.status === 'cache') return `Live GVS updates (cached) · Last updated: ${fmtDate(fb.updatedAt)}`;
   if (fb.status === 'stale_cache') return `Showing recently cached GVS updates · Last updated: ${fmtDate(fb.updatedAt)}`;
@@ -485,16 +720,18 @@ function renderFeedEmpty(fb) {
 }
 
 function renderPost(p) {
-  return `<article class="post">
+  const badge = p.kind === 'demo' ? 'Demo Content' : p.kind === 'facebook' ? 'GVS Facebook' : 'GVS';
+  const badgeClass = p.kind === 'facebook' ? 'gold' : p.kind === 'demo' ? 'live' : '';
+  return `<article class="post ${p.kind === 'demo' ? 'post-demo' : ''}">
     ${p.image ? `<img src="${esc(p.image)}" alt="GVS update" loading="lazy">` : ''}
     <div class="post-body">
-      <span class="pill ${p.kind === 'facebook' ? 'gold' : ''}">${p.kind === 'facebook' ? 'GVS Facebook' : 'GVS'}</span>
+      <span class="pill ${badgeClass}">${esc(badge)}</span>
       <div class="post-date">${fmtDate(p.date)}</div>
       ${p.title ? `<b>${esc(p.title)}</b>` : ''}
       <p>${esc((p.body || '').slice(0, 260))}${(p.body || '').length > 260 ? '…' : ''}</p>
       <div class="post-actions">
         ${p.link ? `<a class="readmore" href="${esc(p.link)}" target="_blank" rel="noopener">Open original →</a>` : ''}
-        ${p.link ? `<button data-share="${esc(p.link)}">Share</button>` : ''}
+        ${p.link && p.kind !== 'demo' ? `<button data-share="${esc(p.link)}">Share</button>` : ''}
       </div>
     </div>
   </article>`;

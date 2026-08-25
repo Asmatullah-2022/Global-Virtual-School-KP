@@ -41,11 +41,11 @@ docs/               Setup guides, API reference, checklists
 | PWA shell, navigation, splash, offline banner, service worker | ✅ Working |
 | JWT auth, roles (student/teacher/parent/school/admin) | ✅ Working |
 | Grades/subjects structure, updates, live classes, language academy, search | ✅ Working (admin-managed content; no fabricated lessons/announcements ship by default) |
-| Facebook feed (`/api/facebook/feed`) | ✅ Working, but shows *"...will appear here when the GVS Page connection is activated"* until `PAGE_ACCESS_TOKEN`/`META_GRAPH_VERSION` are set |
+| Facebook feed (`/api/facebook/feed`) | ✅ Working. Shows clearly labeled **Demo Content** (see below) until `PAGE_ACCESS_TOKEN`/`META_GRAPH_VERSION` are set, then automatically switches to the real Graph API feed — no code change or extra step needed beyond setting the env vars and restarting |
 | Facebook Webhooks | ✅ Verified GET handshake + signature-checked POST, but returns 503 until `WEBHOOK_VERIFY_TOKEN`/`META_APP_SECRET` are set |
-| AI Teacher | ✅ Working end-to-end, but returns an honest "not connected" message until `AI_PROVIDER`/`AI_API_KEY` are set |
+| AI Teacher | ✅ Full UI (language/grade pickers, quick prompts, disclaimer) working end-to-end, but returns an honest "not connected" message until `AI_PROVIDER`/`AI_API_KEY` are set |
 | Role dashboards | ✅ Working, backed by real (currently empty) `progress` data |
-| Admin content management | ✅ API-complete (`/api/admin/collections/:name`); no admin **web UI** yet |
+| Admin dashboard | ✅ Working web UI at Profile → Admin Dashboard (admin role only): system status, analytics, users, and CRUD for updates/live classes/language courses |
 | Video player, quizzes, offline lesson downloads | ⛔ Not built — the Learn screen honestly states content is pending admin publication |
 | Virtual Labs | ⛔ Not built |
 | Native Android app | ⛔ Not built — packaging path documented in `docs/ANDROID_BUILD.md` |
@@ -53,6 +53,18 @@ docs/               Setup guides, API reference, checklists
 Nothing above fakes success: every unconfigured integration shows a plain,
 honest status message instead of pretending to work (see `docs/FACEBOOK_SETUP.md`,
 `docs/AI_TEACHER_SETUP.md`).
+
+### Demo Facebook feed
+
+While `PAGE_ACCESS_TOKEN`/`META_GRAPH_VERSION` are unset, `/api/facebook/feed`
+returns two clearly labeled **Demo Content** posts (dashed gold border in the
+UI, `isDemo:true` in the API, `[Demo Content]` prefix in the text) instead of
+an empty feed, so the Home and Updates screens can be built, styled, and
+tested end-to-end before real Meta credentials exist. The moment both env
+vars are set (see `docs/FACEBOOK_SETUP.md`) and the server restarts,
+`server/services/facebookService.js` skips the demo branch entirely and
+calls the real Graph API — this was verified in this build by toggling
+`config.isFacebookConfigured()`'s inputs and re-testing the endpoint.
 
 ## Install & run
 
@@ -63,8 +75,11 @@ cp .env.example .env
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 # paste it into .env as JWT_SECRET
 npm start
+# Provision the first admin account (admins can't self-register):
+npm run create-admin -- --name "Your Name" --email admin@example.com --password "a-strong-password"
 ```
 Open http://localhost:3000. It can be installed as a PWA from a supporting browser.
+Log in with the admin account above and go to Profile → Admin Dashboard to manage content.
 
 ## Environment variables
 
@@ -98,11 +113,66 @@ frontend only ever calls our own `/api/*` routes.
   matches `META_APP_SECRET` via a timing-safe comparison.
 - No secrets are ever read by, or embedded in, `public/`.
 
+## Testing & build checks
+
+```bash
+npm run check     # syntax-checks every server + frontend JS file (24 files)
+```
+There is no unit-test framework wired in yet (see "Known limitations"). This
+build was additionally verified with: full backend smoke tests via curl
+(auth, content, admin CRUD, Facebook demo/config, webhook signature
+rejection), and a scripted Playwright pass over all 18 screens (desktop +
+mobile viewports, logged-out/student/admin sessions, offline state) with
+zero browser console errors. See `docs/TESTING_CHECKLIST.md` for the full
+breakdown of what's covered vs. what still needs a human on a real device.
+
+## Exactly what remains to configure
+
+### Meta / Facebook
+Nothing in the code is missing — only credentials, which only the GVS Page
+admin can issue (see `docs/FACEBOOK_SETUP.md` for the full walkthrough):
+1. `PAGE_ACCESS_TOKEN` — Page Access Token for Page ID `61592435229097`, generated in the Meta App dashboard.
+2. `META_GRAPH_VERSION` — current Graph API version at deploy time (check https://developers.facebook.com/docs/graph-api/changelog — this session could not reach that domain to confirm a version live, so don't trust a stale value here).
+3. `META_APP_SECRET` — from the Meta App's Settings → Basic, needed to verify webhook signatures.
+4. `WEBHOOK_VERIFY_TOKEN` — any random string **you choose**; must match what you enter in the Meta Webhooks console.
+5. Subscribe the Page to the app's webhook (`/{page-id}/subscribed_apps`) and set the callback URL to `https://<your-domain>/webhooks/facebook`.
+
+Until then: the app shows clearly labeled Demo Content (see above), which
+switches to the live feed automatically once these are set — no further
+code change needed.
+
+### AI Teacher
+1. Pick a provider: `AI_PROVIDER=anthropic` or `AI_PROVIDER=openai`.
+2. Set `AI_API_KEY` to a real key from that provider's account.
+3. Optionally set `AI_MODEL` (defaults to `claude-sonnet-5` for Anthropic, `gpt-4o-mini` for OpenAI).
+
+Until then: `/api/ai/ask` returns an honest "AI Teacher is not yet connected"
+message plus any matching knowledge-base entries — the full UI (language
+picker, quick prompts, disclaimer) is already built and requires no further
+frontend work once a key is set.
+
+### Production deployment
+1. Provision a real admin: `npm run create-admin -- --name "..." --email "..." --password "..."`.
+2. Set `JWT_SECRET` to a freshly generated random value (never the placeholder).
+3. Set `NODE_ENV=production` so CORS locks to `gvskp.org`/`lms.gvskp.org` (see `server/index.js`).
+4. Put a real TLS-terminating reverse proxy in front of the Node process — this app does not terminate HTTPS itself.
+5. Migrate off the bundled JSON file data store to Firestore or Supabase/Postgres before real concurrent traffic — see `docs/DATABASE_SCHEMA.md` for the target shape; it's fine for a pilot/demo, not for production load.
+6. Full checklist: `docs/DEPLOYMENT_CHECKLIST.md`.
+
+### Android build
+1. Confirm the suggested package ID `pk.gov.gvs.mobile` as **permanent** with the client before any release build — Android package IDs cannot change after publishing.
+2. Wrap the existing PWA with Capacitor (`npx cap init` / `add android` / `sync`) — no rewrite needed, `public/` is reused as-is. Exact commands: `docs/ANDROID_BUILD.md`.
+3. Point the packaged app at the production API domain, not `localhost`.
+4. Play Store listing prep (screenshots, privacy policy, data safety form): `docs/PLAY_STORE.md`. Nothing here is submitted automatically.
+
 ## Known limitations of this build (read before treating as production-ready)
 
 - The bundled JSON file data store is not built for concurrent production
   load — migrate before real launch (`docs/DATABASE_SCHEMA.md`).
-- There's no admin web UI yet, only the admin API.
+- The admin dashboard covers updates, live classes, language courses,
+  system status, analytics and a users list; editing the grade/subject
+  taxonomy and the AI knowledge base still requires calling the admin API
+  directly (`docs/API.md`) rather than through the UI.
 - Lesson video/notes/quiz playback, Virtual Labs, and offline lesson
   downloads are scaffolded in the UI (with honest "coming from GVS LMS"
   empty states) but not implemented.
@@ -111,3 +181,5 @@ frontend only ever calls our own `/api/*` routes.
   answers as assistive, not authoritative (the app says so in-product).
 - The UI chrome itself is English-only; the AI Teacher can respond in Urdu
   or Pashto, but full app localization/RTL layout is not yet built.
+- Push notification preferences in Profile → Settings are saved locally
+  only; there's no push delivery service wired up yet.

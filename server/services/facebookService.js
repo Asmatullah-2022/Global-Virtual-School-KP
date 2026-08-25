@@ -94,16 +94,57 @@ async function fetchFromMeta(after) {
   };
 }
 
+// Shown only while PAGE_ACCESS_TOKEN/META_GRAPH_VERSION are unset, so the
+// UI and the Facebook integration can be built/tested end-to-end before
+// real Meta credentials exist. Every item is explicitly labeled as demo
+// content (both in the text itself and via `isDemo: true`) so it can never
+// be mistaken for a real GVS announcement. The moment isFacebookConfigured()
+// is true, this branch is skipped entirely and getFeed() calls the real
+// Graph API instead — no code change or restart-order dependency needed
+// beyond setting the env vars.
+function demoPosts() {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  return [
+    {
+      id: 'demo_1',
+      message: '[Demo Content] This is a sample post shown only because the GVS Facebook Page connection is not yet configured. Once an administrator sets PAGE_ACCESS_TOKEN and META_GRAPH_VERSION, real posts from the official GVS Facebook Page will appear here automatically.',
+      created_time: new Date(now - 1 * day).toISOString(),
+      full_picture: null,
+      permalink_url: 'https://www.facebook.com/profile.php?id=61592435229097',
+      attachments: [],
+      reactions: 0,
+      comments: 0,
+      shares: 0,
+      source: 'Demo Content',
+      isDemo: true,
+    },
+    {
+      id: 'demo_2',
+      message: '[Demo Content] Example of how a GVS update with an image and a longer message will be displayed once the live Facebook feed is connected. This text, and this post, is not a real GVS announcement.',
+      created_time: new Date(now - 3 * day).toISOString(),
+      full_picture: null,
+      permalink_url: 'https://www.facebook.com/profile.php?id=61592435229097',
+      attachments: [],
+      reactions: 0,
+      comments: 0,
+      shares: 0,
+      source: 'Demo Content',
+      isDemo: true,
+    },
+  ];
+}
+
 // Fetch the feed, honoring cache freshness. Never throws to the caller:
 // on failure it returns the last known-good cache with a status flag.
 export async function getFeed({ forceRefresh = false, after } = {}) {
   if (!config.isFacebookConfigured()) {
     return {
-      status: 'not_configured',
+      status: 'demo',
       configured: false,
-      posts: [],
+      posts: demoPosts(),
       updatedAt: memoryCache.updatedAt,
-      message: 'Official Facebook updates will appear here when the GVS Page connection is activated.',
+      message: 'Official Facebook updates will appear here when the GVS Page connection is activated. Showing demo content for now.',
     };
   }
 

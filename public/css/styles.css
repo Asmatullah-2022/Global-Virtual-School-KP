@@ -67,6 +67,10 @@ main{padding-bottom:80px;min-height:60vh}
 .secondary{background:#fff;color:var(--green);border:1px solid #b9d1c0}
 .ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
 .globe{font-size:96px;filter:drop-shadow(0 18px 24px rgba(13,77,43,.16))}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);max-width:1100px;margin:0 auto;padding:0 18px}
+.stats div{background:#fff;border:1px solid var(--line);padding:16px 10px;text-align:center}
+.stats b{display:block;color:var(--green);font-size:20px}
+.stats span{font-size:11px;color:var(--muted)}
 
 /* ---------- Grids / Cards ---------- */
 .grid{display:grid;gap:12px}
@@ -81,6 +85,7 @@ main{padding-bottom:80px;min-height:60vh}
 /* ---------- Feed / posts ---------- */
 .feed{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:12px}
 .post{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.post-demo{border:1px dashed #d9a62e;background:#fffdf6}
 .post img{width:100%;aspect-ratio:16/9;object-fit:cover;background:#eaf0eb}
 .post-body{padding:15px}
 .post-date{font-size:11px;color:var(--muted)}
@@ -149,4 +154,7 @@ select,input[type=text],input[type=email],input[type=password]{padding:10px;bord
   .hero{flex-direction:column;text-align:center}
   .globe{font-size:64px}
   .callout{display:block;text-align:center}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .admin-tabs{overflow-x:auto;flex-wrap:nowrap !important}
+  .admin-table{font-size:12px}
 }
