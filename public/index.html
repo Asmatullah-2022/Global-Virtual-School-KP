@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0d4d2b" />
+<meta name="description" content="Global Virtual School — Connecting Classrooms, Creating Futures. Government of Khyber Pakhtunkhwa." />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icons/icon-192.svg" />
+<title>Global Virtual School</title>
+<link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+
+<!-- Splash screen -->
+<div id="splash" class="splash">
+  <div class="splash-node n1"></div><div class="splash-node n2"></div><div class="splash-node n3"></div>
+  <div class="splash-logo">GVS</div>
+  <h1>GLOBAL VIRTUAL SCHOOL</h1>
+  <p class="splash-slogan">Connecting Classrooms, Creating Futures</p>
+  <p class="splash-org">Government of Khyber Pakhtunkhwa</p>
+</div>
+
+<div id="app" class="hidden">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">GVS</div>
+      <div><b>Global Virtual School</b><small>Government of Khyber Pakhtunkhwa</small></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon" id="searchBtn" aria-label="Search">🔍</button>
+      <button class="icon" id="menuBtn" aria-label="Menu">☰</button>
+    </div>
+  </header>
+
+  <div id="netStatus" class="net-status hidden"></div>
+
+  <!-- Global search overlay -->
+  <div id="searchOverlay" class="overlay hidden">
+    <div class="overlay-panel">
+      <div class="overlay-head"><input id="searchInput" placeholder="Search courses, updates, classes…" /><button id="searchClose" class="icon">✕</button></div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Side menu -->
+  <div id="menuOverlay" class="overlay hidden">
+    <div class="overlay-panel menu-panel">
+      <div class="overlay-head"><b>Menu</b><button id="menuClose" class="icon">✕</button></div>
+      <nav id="menuNav" class="menu-nav"></nav>
+    </div>
+  </div>
+
+  <main id="main"></main>
+
+  <nav class="bottom">
+    <button data-view="home"><span class="ic">⌂</span><span>Home</span></button>
+    <button data-view="learn"><span class="ic">📚</span><span>Learn</span></button>
+    <button data-view="classes"><span class="ic">🔴</span><span>Classes</span></button>
+    <button data-view="updates"><span class="ic">📰</span><span>Updates</span></button>
+    <button data-view="profile"><span class="ic">👤</span><span>Profile</span></button>
+  </nav>
+</div>
+
+<template id="tpl-skeleton-card">
+  <div class="skeleton-card"><div class="skel-line w60"></div><div class="skel-line w80"></div><div class="skel-line w40"></div></div>
+</template>
+
+<script src="/js/api.js"></script>
+<script src="/js/state.js"></script>
+<script src="/js/views.js"></script>
+<script src="/js/router.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
