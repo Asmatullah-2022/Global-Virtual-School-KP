@@ -5,17 +5,26 @@ const API = (() => {
     return localStorage.getItem('gvs_token') || '';
   }
 
+  const REQUEST_TIMEOUT_MS = 15000;
+
   async function request(path, opts = {}) {
     const headers = { 'content-type': 'application/json', ...(opts.headers || {}) };
     const t = token();
     if (t) headers.authorization = `Bearer ${t}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(path, { ...opts, headers });
+      res = await fetch(path, { ...opts, headers, signal: controller.signal });
     } catch (e) {
-      const err = new Error('Network error. Please check your connection.');
+      // A hung request (no response ever received) surfaces here as an
+      // AbortError once the timeout fires — give it a clear, specific
+      // message instead of leaving the caller with silent nothing.
+      const err = new Error(e.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Network error. Please check your connection.');
       err.network = true;
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
     let data = null;
     try { data = await res.json(); } catch { /* empty body */ }
