@@ -25,42 +25,55 @@ const Router = {
     const main = document.querySelector('#main');
     const impl = Views[resolvedView] || Views.home;
     main.innerHTML = impl.render();
-    this.bindGlobalActions(main);
     this.updateBottomNav();
     if (impl.afterRender) await impl.afterRender();
   },
 
-  bindGlobalActions(scope) {
-    scope.querySelectorAll('[data-nav]').forEach((el) => el.addEventListener('click', () => this.go(el.dataset.nav)));
-    scope.querySelectorAll('[data-external]').forEach((el) =>
-      el.addEventListener('click', () => {
+  // Event delegation: one listener attached once to the stable #main
+  // container (never itself replaced — only its innerHTML changes) rather
+  // than binding each [data-*] element individually at render time. Views
+  // like Learn/Languages inject their real content (grade cards, subject
+  // cards, language course cards, share buttons) asynchronously inside
+  // afterRender(), *after* the initial render() call — attaching listeners
+  // to a point-in-time querySelectorAll() snapshot missed anything added
+  // later. Delegation on the container fixes that for all current and
+  // future dynamically-injected content, with no per-render rebinding.
+  initDelegatedEvents() {
+    document.querySelector('#main').addEventListener('click', (event) => {
+      const el = event.target.closest(
+        '[data-nav],[data-external],[data-grade],[data-subject],[data-back-learn],[data-course],[data-back-languages],[data-share],[data-retry]'
+      );
+      if (!el) return;
+
+      if (el.dataset.nav !== undefined) { this.go(el.dataset.nav); return; }
+      if (el.dataset.external !== undefined) {
         const map = { website: GVS.config?.website, admissions: GVS.config?.admissions, lms: GVS.config?.lms, facebook: GVS.config?.facebookUrl };
         const url = map[el.dataset.external];
         if (url) window.open(url, '_blank', 'noopener');
-      })
-    );
-    scope.querySelectorAll('[data-grade]').forEach((el) => el.addEventListener('click', () => this.go(`learn/${el.dataset.grade}`)));
-    scope.querySelectorAll('[data-subject]').forEach((el) =>
-      el.addEventListener('click', () => {
-        location.hash = `#/learn/${GVS.learnPath.grade}/${el.dataset.subject}`;
-      })
-    );
-    scope.querySelectorAll('[data-back-learn]').forEach((el) =>
-      el.addEventListener('click', () => {
-        if (el.dataset.backLearn === 'root') location.hash = '#/learn';
-        else location.hash = `#/learn/${GVS.learnPath.grade}`;
-      })
-    );
-    scope.querySelectorAll('[data-course]').forEach((el) => el.addEventListener('click', () => (location.hash = `#/languages/${el.dataset.course}`)));
-    scope.querySelectorAll('[data-back-languages]').forEach((el) => el.addEventListener('click', () => (location.hash = '#/languages')));
-    scope.querySelectorAll('[data-share]').forEach((el) =>
-      el.addEventListener('click', async () => {
+        return;
+      }
+      // Not this.go() — go() validates against the flat `routes` list
+      // (bare names like "learn"), so a compound path like "learn/6"
+      // would fail that check and silently fall back to home. Set the
+      // hash directly instead, same as the subject/course handlers below.
+      if (el.dataset.grade !== undefined) { location.hash = `#/learn/${el.dataset.grade}`; return; }
+      if (el.dataset.subject !== undefined) { location.hash = `#/learn/${GVS.learnPath.grade}/${el.dataset.subject}`; return; }
+      if (el.dataset.backLearn !== undefined) {
+        location.hash = el.dataset.backLearn === 'root' ? '#/learn' : `#/learn/${GVS.learnPath.grade}`;
+        return;
+      }
+      if (el.dataset.course !== undefined) { location.hash = `#/languages/${el.dataset.course}`; return; }
+      if (el.dataset.backLanguages !== undefined) { location.hash = '#/languages'; return; }
+      if (el.dataset.share !== undefined) {
         const url = el.dataset.share;
-        if (navigator.share) { try { await navigator.share({ url }); return; } catch { /* cancelled */ } }
-        try { await navigator.clipboard.writeText(url); el.textContent = 'Link copied'; } catch { window.open(url, '_blank', 'noopener'); }
-      })
-    );
-    scope.querySelectorAll('[data-retry]').forEach((el) => el.addEventListener('click', () => this.render()));
+        (async () => {
+          if (navigator.share) { try { await navigator.share({ url }); return; } catch { /* cancelled */ } }
+          try { await navigator.clipboard.writeText(url); el.textContent = 'Link copied'; } catch { window.open(url, '_blank', 'noopener'); }
+        })();
+        return;
+      }
+      if (el.dataset.retry !== undefined) { this.render(); }
+    });
   },
 
   updateBottomNav() {
