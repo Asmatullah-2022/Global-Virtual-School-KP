@@ -10,6 +10,7 @@ import logger from './logger.js';
 import { attachUser } from './middleware/auth.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { jsonBody } from './middleware/bodyParser.js';
+import { requestTimeout } from './middleware/requestTimeout.js';
 
 import authRoutes from './routes/auth.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
@@ -23,6 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.set('trust proxy', 1);
+app.use(requestTimeout(8000));
 app.use(
   helmet({
     contentSecurityPolicy: {

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import db from '../lib/dataStore.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
 import logger from '../logger.js';
+import { asyncHandler } from '../lib/asyncHandler.js';
 
 const router = Router();
 const VALID_ROLES = ['student', 'teacher', 'parent', 'school', 'admin'];
@@ -10,7 +11,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Only students, teachers, parents and schools can self-register.
 // Admin accounts must be provisioned directly by an existing admin (see docs/API.md).
-router.post('/register', async (req, res) => {
+router.post('/register', asyncHandler(async (req, res) => {
+  const stageLog = (stage) => logger.info('register_stage', { stage, path: req.path });
+  stageLog('start');
   const { name, email, password, role, grade, school } = req.body || {};
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'name, email, password and role are required.' });
@@ -20,10 +23,13 @@ router.post('/register', async (req, res) => {
   if (!VALID_ROLES.includes(role) || role === 'admin') {
     return res.status(400).json({ error: 'Invalid role for self-registration.' });
   }
+  stageLog('validated');
   const existing = db.findOne('users', (u) => u.email.toLowerCase() === email.toLowerCase());
   if (existing) return res.status(409).json({ error: 'An account with this email already exists.' });
+  stageLog('checked_existing');
 
   const passwordHash = await bcrypt.hash(password, 12);
+  stageLog('hashed_password');
   const user = db.create('users', {
     name,
     email: email.toLowerCase(),
@@ -34,13 +40,15 @@ router.post('/register', async (req, res) => {
     childrenIds: role === 'parent' ? [] : undefined,
     classIds: role === 'teacher' ? [] : undefined,
   }, 'usr');
+  stageLog('created_user');
 
   logger.audit('user_registered', { userId: user.id, role });
   const token = signToken(user);
+  stageLog('sending_response');
   res.status(201).json({ token, user: publicUser(user) });
-});
+}));
 
-router.post('/login', async (req, res) => {
+router.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email and password are required.' });
   const user = db.findOne('users', (u) => u.email.toLowerCase() === String(email).toLowerCase());
@@ -51,7 +59,7 @@ router.post('/login', async (req, res) => {
   logger.audit('user_login', { userId: user.id });
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
-});
+}));
 
 router.get('/me', requireAuth, (req, res) => {
   const user = db.get('users', req.user.sub);
