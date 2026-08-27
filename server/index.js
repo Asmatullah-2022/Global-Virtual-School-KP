@@ -9,6 +9,7 @@ import config from './config.js';
 import logger from './logger.js';
 import { attachUser } from './middleware/auth.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
+import { jsonBody } from './middleware/bodyParser.js';
 
 import authRoutes from './routes/auth.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
@@ -38,10 +39,13 @@ app.use(
 app.use(cors({ origin: config.isProd ? [config.links.website, 'https://gvskp.org'] : true }));
 
 // Webhooks need the raw body for X-Hub-Signature-256 verification, so that
-// route parses JSON itself with a rawBody capture; everything else uses
-// the standard JSON parser.
-app.use('/webhooks', express.json({ limit: '1mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
-app.use(express.json({ limit: '1mb' }));
+// route captures it via jsonBody's rawBody option; everything else uses
+// the plain JSON parser. See server/middleware/bodyParser.js for why this
+// is a custom parser rather than express.json() directly (Vercel
+// compatibility — express.json() alone silently produces an empty body
+// there).
+app.use('/webhooks', jsonBody({ captureRawBody: true }));
+app.use(jsonBody());
 
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
 app.use('/api', apiLimiter);

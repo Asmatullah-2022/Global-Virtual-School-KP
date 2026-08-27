@@ -405,7 +405,8 @@ Views.register = {
     </section>`;
   },
   afterRender() {
-    document.querySelector('#reg-submit').addEventListener('click', async () => {
+    const btn = document.querySelector('#reg-submit');
+    btn.addEventListener('click', async () => {
       const body = {
         name: document.querySelector('#reg-name').value.trim(),
         email: document.querySelector('#reg-email').value.trim(),
@@ -414,6 +415,14 @@ Views.register = {
         grade: document.querySelector('#reg-grade').value || undefined,
       };
       const msg = document.querySelector('#reg-msg');
+      // Visible feedback the instant the button is tapped, and a guard
+      // against double-submit while the request is in flight — the
+      // previous version gave no indication anything was happening until
+      // the request settled, which made a slow/failed request look like
+      // the tap did nothing at all.
+      btn.disabled = true;
+      btn.textContent = 'Creating account…';
+      msg.innerHTML = '';
       try {
         const res = await API.post('/api/auth/register', body);
         GVS.setSession(res.token, res.user);
@@ -421,6 +430,8 @@ Views.register = {
         setTimeout(() => Router.go('profile'), 400);
       } catch (e) {
         msg.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
       }
     });
   },
