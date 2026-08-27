@@ -70,9 +70,13 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 
 app.use(errorHandler);
 
-app.listen(config.port, () => {
+// Bind explicitly to 0.0.0.0 (not just the default) so the app is reachable
+// on the interface hosting platforms' health checks and preview proxies
+// (e.g. Bonto) actually probe, rather than relying on Node's default.
+app.listen(config.port, '0.0.0.0', () => {
   logger.info('gvs_server_started', {
     port: config.port,
+    host: '0.0.0.0',
     env: config.nodeEnv,
     facebookConfigured: config.isFacebookConfigured(),
     webhookConfigured: config.isWebhookConfigured(),
