@@ -70,19 +70,33 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 
 app.use(errorHandler);
 
-// Bind explicitly to 0.0.0.0 (not just the default) so the app is reachable
-// on the interface hosting platforms' health checks and preview proxies
-// (e.g. Bonto) actually probe, rather than relying on Node's default.
-app.listen(config.port, '0.0.0.0', () => {
-  logger.info('gvs_server_started', {
-    port: config.port,
-    host: '0.0.0.0',
-    env: config.nodeEnv,
-    facebookConfigured: config.isFacebookConfigured(),
-    webhookConfigured: config.isWebhookConfigured(),
-    aiConfigured: config.isAiConfigured(),
-    authConfigured: config.isAuthConfigured(),
+// On a serverless platform (Vercel sets VERCEL=1 in its function runtime)
+// the platform itself invokes `app` as a request handler per invocation —
+// there is no long-lived process to bind a port on, so app.listen() must
+// be skipped there. Every other host (Bonto, Render, plain `node
+// server/index.js`, etc.) runs this file directly as the process entry
+// point and needs the normal listen() call, unchanged from before.
+if (!process.env.VERCEL) {
+  // Bind explicitly to 0.0.0.0 (not just the default) so the app is
+  // reachable on the interface hosting platforms' health checks and
+  // preview proxies (e.g. Bonto) actually probe, rather than relying on
+  // Node's default.
+  app.listen(config.port, '0.0.0.0', () => {
+    logger.info('gvs_server_started', {
+      port: config.port,
+      host: '0.0.0.0',
+      env: config.nodeEnv,
+      facebookConfigured: config.isFacebookConfigured(),
+      webhookConfigured: config.isWebhookConfigured(),
+      aiConfigured: config.isAiConfigured(),
+      authConfigured: config.isAuthConfigured(),
+    });
+    // eslint-disable-next-line no-console
+    console.log(`GVS app running on http://localhost:${config.port}`);
   });
-  // eslint-disable-next-line no-console
-  console.log(`GVS app running on http://localhost:${config.port}`);
-});
+}
+
+// Exported so a hosting-platform-specific entry point (e.g. api/index.js
+// for Vercel) can reuse this exact same Express app as a request handler
+// without duplicating any route/middleware setup above.
+export default app;

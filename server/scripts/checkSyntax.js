@@ -20,7 +20,7 @@ function collectJsFiles(dir, out = []) {
 }
 
 const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..');
-const files = [...collectJsFiles(path.join(root, 'server')), ...collectJsFiles(path.join(root, 'public'))];
+const files = [...collectJsFiles(path.join(root, 'server')), ...collectJsFiles(path.join(root, 'public')), ...collectJsFiles(path.join(root, 'api'))];
 
 let failed = 0;
 for (const file of files) {
