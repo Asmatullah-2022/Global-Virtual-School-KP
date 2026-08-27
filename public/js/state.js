@@ -37,3 +37,12 @@ function skeletons(n = 4) {
 function stateBox({ emoji = '📭', title, body, retry }) {
   return `<div class="state-box"><span class="emoji">${emoji}</span><b>${esc(title)}</b><p>${esc(body)}</p>${retry ? `<button class="secondary" data-retry="1">Try Again</button>` : ''}</div>`;
 }
+// For a 500, the server includes a safe category + short request ID (no
+// message/stack/paths — see server/middleware/errorHandler.js) so a
+// failure can be reported and diagnosed without needing host log access.
+function apiErrorText(e) {
+  const category = e?.data?.category;
+  const requestId = e?.data?.requestId;
+  if (category && requestId) return `${e.message} (${category}, ref: ${requestId})`;
+  return e?.message || 'Something went wrong.';
+}

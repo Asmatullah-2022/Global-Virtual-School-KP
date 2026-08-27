@@ -26,6 +26,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import logger from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DIR = path.join(__dirname, '..', 'data');
@@ -39,30 +40,60 @@ function filePath(collection) {
   return path.join(DATA_DIR, `${collection}.json`);
 }
 
+function seedFrom(collection) {
+  const seedFp = path.join(SEED_DIR, `${collection}.json`);
+  return fs.existsSync(seedFp) ? fs.readFileSync(seedFp, 'utf-8') : '[]';
+}
+
 function seedIfMissing(collection) {
   const fp = filePath(collection);
   if (fs.existsSync(fp)) return;
   ensureDataDir();
-  const seedFp = path.join(SEED_DIR, `${collection}.json`);
-  const seedContent = fs.existsSync(seedFp) ? fs.readFileSync(seedFp, 'utf-8') : '[]';
-  fs.writeFileSync(fp, seedContent);
+  fs.writeFileSync(fp, seedFrom(collection));
 }
 
 function readAll(collection) {
   seedIfMissing(collection);
   const fp = filePath(collection);
+  let raw;
   try {
-    const raw = fs.readFileSync(fp, 'utf-8');
-    return raw.trim() ? JSON.parse(raw) : [];
+    raw = fs.readFileSync(fp, 'utf-8');
   } catch (e) {
     throw new Error(`Failed to read collection "${collection}": ${e.message}`);
+  }
+  if (!raw.trim()) return [];
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    // A serverless host can reuse the same warm container (and its /tmp
+    // contents) across invocations. If an earlier request was interrupted
+    // mid-write — a crash, a timeout, a killed function — the file left
+    // behind can be truncated/corrupt, and every subsequent request in
+    // that same container would otherwise fail forever with no way to
+    // self-heal until a fresh cold start happens to occur. Recover
+    // automatically: log it, reset the collection from the git-tracked
+    // seed, and continue, rather than taking down every future request
+    // on this container.
+    logger.error('data_file_corrupt_reseeding', { collection, message: e.message });
+    const fresh = seedFrom(collection);
+    fs.writeFileSync(fp, fresh);
+    return fresh.trim() ? JSON.parse(fresh) : [];
   }
 }
 
 function writeAll(collection, records) {
   ensureDataDir();
   const fp = filePath(collection);
-  fs.writeFileSync(fp, JSON.stringify(records, null, 2));
+  const tmpFp = `${fp}.${process.pid}.${Date.now()}.tmp`;
+  const json = JSON.stringify(records, null, 2);
+  // Write-then-rename instead of writing fp directly: a rename is atomic
+  // on POSIX filesystems (including Vercel's /tmp), so a request that gets
+  // interrupted mid-write (timeout, crash, cold-start eviction) can never
+  // leave fp itself truncated/corrupt for the next request to trip over —
+  // it either has the old complete content or the new complete content,
+  // never a partial write.
+  fs.writeFileSync(tmpFp, json);
+  fs.renameSync(tmpFp, fp);
 }
 
 let seq = Date.now();
