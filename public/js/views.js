@@ -380,7 +380,7 @@ Views.login = {
         msg.innerHTML = `<div class="form-success">Welcome back, ${esc(res.user.name)}.</div>`;
         setTimeout(() => Router.go('profile'), 400);
       } catch (e) {
-        msg.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        msg.innerHTML = `<div class="form-error">${esc(apiErrorText(e))}</div>`;
       }
     });
   },
@@ -429,7 +429,7 @@ Views.register = {
         msg.innerHTML = `<div class="form-success">Account created. Welcome, ${esc(res.user.name)}.</div>`;
         setTimeout(() => Router.go('profile'), 400);
       } catch (e) {
-        msg.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        msg.innerHTML = `<div class="form-error">${esc(apiErrorText(e))}</div>`;
         btn.disabled = false;
         btn.textContent = 'Create Account';
       }
