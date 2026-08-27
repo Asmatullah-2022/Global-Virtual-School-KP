@@ -13,12 +13,46 @@
 // dashboard access this deployment process doesn't control, so instead:
 // detect which case we're in and handle both without needing any
 // platform-specific configuration at all.
+import logger from '../logger.js';
+
 export function jsonBody({ captureRawBody = false } = {}) {
   return (req, res, next) => {
-    // Case 1: the platform (Vercel) already parsed the body into a plain
-    // object before we got here. Trust it — there is no raw stream left
-    // to read, and re-reading it would hang or return nothing.
-    if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    // Case 1: the platform (Vercel) already consumed the body before we
+    // got here. Earlier this only recognized an already-parsed *object*
+    // (req.body typeof 'object') — but Vercel's helpers can hand it over
+    // as a raw string too, depending on runtime version and how the
+    // request negotiates content type. Checking for "anything at all"
+    // (not just objects) is what actually matches "the platform already
+    // drained the stream" — the real condition we care about — instead of
+    // one specific shape of it. Getting this narrower check wrong is
+    // exactly what caused Case 2 (below) to wait on stream events that
+    // would never fire, i.e. the production hang/500/504 this fixes.
+    if (req.body !== undefined && req.body !== null) {
+      if (typeof req.body === 'string') {
+        if (req.body.trim() === '') {
+          req.body = {};
+        } else {
+          try {
+            req.body = JSON.parse(req.body);
+          } catch {
+            return res.status(400).json({ error: 'Invalid JSON in request body.' });
+          }
+        }
+      } else if (Buffer.isBuffer(req.body)) {
+        const text = req.body.toString('utf-8');
+        if (captureRawBody && !req.rawBody) req.rawBody = req.body;
+        if (text.trim() === '') {
+          req.body = {};
+        } else {
+          try {
+            req.body = JSON.parse(text);
+          } catch {
+            return res.status(400).json({ error: 'Invalid JSON in request body.' });
+          }
+        }
+      }
+      // else: already a parsed plain object — use as-is.
+
       if (captureRawBody && !req.rawBody) {
         // Best-effort reconstruction for signature verification when the
         // true original bytes are unavailable. Documented limitation: if
@@ -32,18 +66,31 @@ export function jsonBody({ captureRawBody = false } = {}) {
       return next();
     }
 
-    // Case 2: nothing has consumed the stream yet — this is the normal
-    // path on every non-Vercel host, and read it ourselves.
+    // Case 2: req.body wasn't pre-populated, so read the stream
+    // ourselves — the normal path on every non-Vercel host. Defended with
+    // its own short timeout: if the stream never emits 'data'/'end' at
+    // all (a platform quirk this module doesn't yet know about), this
+    // fails fast with a clear error instead of hanging until the
+    // request-level safety net or the platform's own timeout kicks in.
     const chunks = [];
     let total = 0;
     const LIMIT = 1024 * 1024; // 1mb, matching the previous express.json() limit
     let responded = false;
+
+    const streamTimeout = setTimeout(() => {
+      if (!responded) {
+        responded = true;
+        logger.error('body_stream_timeout', { path: req.originalUrl || req.url });
+        res.status(500).json({ error: 'Could not read the request body.' });
+      }
+    }, 5000);
 
     req.on('data', (chunk) => {
       total += chunk.length;
       if (total > LIMIT) {
         if (!responded) {
           responded = true;
+          clearTimeout(streamTimeout);
           res.status(413).json({ error: 'Request body too large.' });
         }
         req.destroy();
@@ -54,6 +101,8 @@ export function jsonBody({ captureRawBody = false } = {}) {
 
     req.on('end', () => {
       if (responded) return;
+      responded = true;
+      clearTimeout(streamTimeout);
       const buf = Buffer.concat(chunks);
       if (captureRawBody) req.rawBody = buf;
       if (buf.length === 0) {
@@ -63,7 +112,6 @@ export function jsonBody({ captureRawBody = false } = {}) {
       try {
         req.body = JSON.parse(buf.toString('utf-8'));
       } catch {
-        responded = true;
         return res.status(400).json({ error: 'Invalid JSON in request body.' });
       }
       next();
@@ -72,6 +120,7 @@ export function jsonBody({ captureRawBody = false } = {}) {
     req.on('error', (err) => {
       if (!responded) {
         responded = true;
+        clearTimeout(streamTimeout);
         next(err);
       }
     });
