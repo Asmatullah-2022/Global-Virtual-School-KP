@@ -101,6 +101,7 @@
   updateNetStatus();
 
   // --- Router wiring ---
+  Router.initDelegatedEvents();
   window.addEventListener('hashchange', () => Router.render());
   if (!location.hash) location.hash = '#/home';
   await Router.render();
