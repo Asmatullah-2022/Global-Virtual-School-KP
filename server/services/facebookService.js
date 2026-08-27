@@ -4,13 +4,17 @@
 // disk-persisted cache so a restart doesn't lose the last good feed, and a
 // "stale but available" fallback when Meta is unreachable.
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import config from '../config.js';
 import logger from '../logger.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CACHE_FILE = path.join(__dirname, '..', 'data', 'fbCache.json');
+// Written outside the deployed source tree, same reasoning as
+// server/lib/dataStore.js: some hosts auto-restart on any file change
+// under the project directory, and this cache is rewritten on every
+// successful feed fetch.
+const CACHE_FILE = path.join(process.env.RUNTIME_DATA_DIR || path.join(os.tmpdir(), 'gvs-mobile-app-data'), 'fbCache.json');
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes — respectful of Graph API rate limits
 const FIELDS =
   'id,message,created_time,full_picture,permalink_url,attachments{media,type,url,title},reactions.limit(0).summary(true),comments.limit(0).summary(true),shares';

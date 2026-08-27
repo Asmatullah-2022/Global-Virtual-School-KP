@@ -1,28 +1,56 @@
 // Lightweight JSON-file data store.
 //
 // This is an interim, dependency-free "database" so the app is fully
-// functional out of the box. Every collection is a JSON file under
-// server/data/. The API is deliberately collection/document shaped
-// (list/get/create/update/remove) so migrating to Firestore or Supabase
-// later means swapping this module's internals, not the route code.
+// functional out of the box. The API is deliberately collection/document
+// shaped (list/get/create/update/remove) so migrating to Firestore or
+// Supabase later means swapping this module's internals, not the route
+// code.
 //
-// NOT SUITABLE FOR HIGH-CONCURRENCY PRODUCTION LOAD. Before real launch,
-// point this at Firebase Firestore or Supabase/Postgres per DATABASE
-// section of docs/DATABASE_SCHEMA.md.
+// Runtime writes are kept OUT of the deployed source tree (server/data/
+// holds only the git-tracked seed files, read-only at runtime). Some
+// hosting platforms auto-restart the app when they detect a file change
+// anywhere under the project directory ("hot reload" / dev-mode file
+// watching); if this store wrote directly into server/data/, every
+// registration, login-driven update, or Facebook cache write would look
+// like a code change and could trigger a restart loop / "port in use"
+// while the previous process was still shutting down. Writing instead to
+// a directory outside the watched tree (RUNTIME_DATA_DIR, or the OS temp
+// dir by default) avoids that class of problem entirely. Seed data is
+// copied into the runtime dir once, on first read of each collection.
+//
+// NOT SUITABLE FOR HIGH-CONCURRENCY PRODUCTION LOAD, and the OS temp dir
+// is not guaranteed persistent across restarts on most hosts. Before real
+// launch, point this at Firebase Firestore or Supabase/Postgres per the
+// DATABASE section of docs/DATABASE_SCHEMA.md.
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const SEED_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = process.env.RUNTIME_DATA_DIR || path.join(os.tmpdir(), 'gvs-mobile-app-data');
+
+function ensureDataDir() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 function filePath(collection) {
   return path.join(DATA_DIR, `${collection}.json`);
 }
 
-function readAll(collection) {
+function seedIfMissing(collection) {
   const fp = filePath(collection);
-  if (!fs.existsSync(fp)) return [];
+  if (fs.existsSync(fp)) return;
+  ensureDataDir();
+  const seedFp = path.join(SEED_DIR, `${collection}.json`);
+  const seedContent = fs.existsSync(seedFp) ? fs.readFileSync(seedFp, 'utf-8') : '[]';
+  fs.writeFileSync(fp, seedContent);
+}
+
+function readAll(collection) {
+  seedIfMissing(collection);
+  const fp = filePath(collection);
   try {
     const raw = fs.readFileSync(fp, 'utf-8');
     return raw.trim() ? JSON.parse(raw) : [];
@@ -32,6 +60,7 @@ function readAll(collection) {
 }
 
 function writeAll(collection, records) {
+  ensureDataDir();
   const fp = filePath(collection);
   fs.writeFileSync(fp, JSON.stringify(records, null, 2));
 }
