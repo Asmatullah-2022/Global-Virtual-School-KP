@@ -14,6 +14,8 @@ import { jsonBody } from './middleware/bodyParser.js';
 import { requestTimeout } from './middleware/requestTimeout.js';
 import { asyncHandler } from './lib/asyncHandler.js';
 
+import { resolvedAiModel } from './services/aiService.js';
+
 import authRoutes from './routes/auth.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
 import webhookRoutes from './routes/webhooks.routes.js';
@@ -118,7 +120,10 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
     // part of it. Mirrors authConfigured so this can be checked from
     // /api/health without an admin login (server/routes/admin.routes.js's
     // /system-status already exposes this same pair, but requires auth).
-    aiTeacher: { configured: config.isAiConfigured(), provider: config.aiProvider || null },
+    // model is not a secret (it's visible in every outbound request URL/
+    // body already); exposed here so a model/env-var change can be
+    // confirmed live without needing Vercel log access.
+    aiTeacher: { configured: config.isAiConfigured(), provider: config.aiProvider || null, model: config.isAiConfigured() ? resolvedAiModel() : null },
     dataStore: {
       backend: db.backend,
       redisHost: db.redisHost,
