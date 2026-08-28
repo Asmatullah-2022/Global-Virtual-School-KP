@@ -38,13 +38,13 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Invalid role for self-registration.' });
   }
   stageLog('validated');
-  const existing = db.findOne('users', (u) => u.email === email);
+  const existing = await db.findOne('users', (u) => u.email === email);
   if (existing) return res.status(409).json({ error: 'An account with this email already exists.' });
-  stageLog('checked_existing', { existingUserCount: db.count('users') });
+  stageLog('checked_existing', { existingUserCount: await db.count('users') });
 
   const passwordHash = await bcrypt.hash(password, 12);
   stageLog('hashed_password');
-  const user = db.create('users', {
+  const user = await db.create('users', {
     name,
     email,
     passwordHash,
@@ -54,7 +54,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     childrenIds: role === 'parent' ? [] : undefined,
     classIds: role === 'teacher' ? [] : undefined,
   }, 'usr');
-  stageLog('created_user', { userId: user.id, userCountAfterCreate: db.count('users') });
+  stageLog('created_user', { userId: user.id, userCountAfterCreate: await db.count('users') });
 
   logger.audit('user_registered', { userId: user.id, role, instanceId: db.instanceId });
 
@@ -93,8 +93,8 @@ router.post('/login', asyncHandler(async (req, res) => {
   // being found despite a successful prior registration) is the direct
   // evidence needed to confirm cross-container storage isolation as the
   // cause, rather than assuming it.
-  stageLog('looking_up_user', { userCountAtLookup: db.count('users') });
-  const user = db.findOne('users', (u) => u.email === email);
+  stageLog('looking_up_user', { userCountAtLookup: await db.count('users') });
+  const user = await db.findOne('users', (u) => u.email === email);
   if (!user) {
     stageLog('user_not_found');
     return res.status(401).json({ error: 'Invalid email or password.' });
@@ -125,11 +125,11 @@ router.post('/login', asyncHandler(async (req, res) => {
   res.json({ token, user: publicUser(user) });
 }));
 
-router.get('/me', requireAuth, (req, res) => {
-  const user = db.get('users', req.user.sub);
+router.get('/me', requireAuth, asyncHandler(async (req, res) => {
+  const user = await db.get('users', req.user.sub);
   if (!user) return res.status(404).json({ error: 'User not found.' });
   res.json({ user: publicUser(user) });
-});
+}));
 
 function publicUser(u) {
   const { passwordHash, ...rest } = u;

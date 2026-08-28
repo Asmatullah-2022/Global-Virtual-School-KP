@@ -3,14 +3,14 @@
 // it is intentionally simple and transparent about its limits.
 import db from '../lib/dataStore.js';
 
-export function searchKnowledgeBase({ query, grade, subject, limit = 3 }) {
+export async function searchKnowledgeBase({ query, grade, subject, limit = 3 }) {
   const terms = (query || '')
     .toLowerCase()
     .split(/\W+/)
     .filter((t) => t.length > 2);
   if (terms.length === 0) return [];
 
-  const entries = db.list('knowledgeBase', (e) => {
+  const entries = await db.list('knowledgeBase', (e) => {
     if (grade && e.grade && String(e.grade) !== String(grade)) return false;
     if (subject && e.subject && e.subject.toLowerCase() !== String(subject).toLowerCase()) return false;
     return true;

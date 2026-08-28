@@ -1,27 +1,25 @@
-// Lightweight JSON-file data store.
+// Data store with two backends: Upstash Redis when configured, or a
+// lightweight JSON-file store as a zero-config fallback.
 //
-// This is an interim, dependency-free "database" so the app is fully
-// functional out of the box. The API is deliberately collection/document
-// shaped (list/get/create/update/remove) so migrating to Firestore or
-// Supabase later means swapping this module's internals, not the route
-// code.
+// Why: on Vercel (and any host running serverless functions without
+// guaranteed request-to-container affinity), the JSON-file backend's
+// writes land in a container-local /tmp that other containers cannot see.
+// That is fine for local dev / single-process hosts (Bonto, Render, plain
+// `node server/index.js`), but on Vercel it means a user registered in one
+// container is invisible to a login request served by a different, equally
+// valid container — "register succeeds, login says invalid credentials".
 //
-// Runtime writes are kept OUT of the deployed source tree (server/data/
-// holds only the git-tracked seed files, read-only at runtime). Some
-// hosting platforms auto-restart the app when they detect a file change
-// anywhere under the project directory ("hot reload" / dev-mode file
-// watching); if this store wrote directly into server/data/, every
-// registration, login-driven update, or Facebook cache write would look
-// like a code change and could trigger a restart loop / "port in use"
-// while the previous process was still shutting down. Writing instead to
-// a directory outside the watched tree (RUNTIME_DATA_DIR, or the OS temp
-// dir by default) avoids that class of problem entirely. Seed data is
-// copied into the runtime dir once, on first read of each collection.
+// Redis (via Upstash's REST API, which needs no persistent TCP connection
+// and so works from a serverless function) fixes that by giving every
+// container the same shared store. It activates automatically, with zero
+// code changes required elsewhere, whenever UPSTASH_REDIS_REST_URL and
+// UPSTASH_REDIS_REST_TOKEN are both present in the environment; otherwise
+// this module behaves exactly as it did before.
 //
-// NOT SUITABLE FOR HIGH-CONCURRENCY PRODUCTION LOAD, and the OS temp dir
-// is not guaranteed persistent across restarts on most hosts. Before real
-// launch, point this at Firebase Firestore or Supabase/Postgres per the
-// DATABASE section of docs/DATABASE_SCHEMA.md.
+// The public API (list/get/findOne/create/update/remove/count) is async
+// under both backends now, so callers must await it — the file backend
+// doesn't strictly need to be async, but keeping one shape for both avoids
+// a caller ever having to know or care which backend is active.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -33,16 +31,33 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DIR = path.join(__dirname, '..', 'data');
 const DATA_DIR = process.env.RUNTIME_DATA_DIR || path.join(os.tmpdir(), 'gvs-mobile-app-data');
 
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const REDIS_ENABLED = Boolean(REDIS_URL && REDIS_TOKEN);
+
 // Generated once when this module is first loaded — i.e. once per cold
 // start / container instance, not once per request. On a host whose
 // serverless functions can route different requests to different,
-// isolated container instances (each with its own /tmp), two requests a
-// few seconds apart logging two *different* instance IDs is direct proof
-// that they ran in separate containers with separate, non-shared copies
-// of this JSON-file store — the specific failure mode this ID exists to
-// either confirm or rule out, rather than guess at.
+// isolated container instances, two requests a few seconds apart logging
+// two *different* instance IDs is direct evidence they ran in separate
+// containers — useful to confirm cross-container isolation regardless of
+// which backend is active.
 export const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
+let seq = Date.now();
+function nextId(prefix) {
+  seq += 1;
+  return `${prefix}_${seq.toString(36)}`;
+}
+
+function stampCreate(record) {
+  const now = new Date().toISOString();
+  return { createdAt: now, updatedAt: now, ...record };
+}
+
+// ---------------------------------------------------------------------
+// File backend (default, zero-config)
+// ---------------------------------------------------------------------
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -63,7 +78,7 @@ function seedIfMissing(collection) {
   fs.writeFileSync(fp, seedFrom(collection));
 }
 
-function readAll(collection) {
+function readAllFile(collection) {
   seedIfMissing(collection);
   const fp = filePath(collection);
   let raw;
@@ -78,13 +93,10 @@ function readAll(collection) {
   } catch (e) {
     // A serverless host can reuse the same warm container (and its /tmp
     // contents) across invocations. If an earlier request was interrupted
-    // mid-write — a crash, a timeout, a killed function — the file left
-    // behind can be truncated/corrupt, and every subsequent request in
-    // that same container would otherwise fail forever with no way to
-    // self-heal until a fresh cold start happens to occur. Recover
-    // automatically: log it, reset the collection from the git-tracked
-    // seed, and continue, rather than taking down every future request
-    // on this container.
+    // mid-write, the file left behind can be truncated/corrupt. Recover
+    // automatically: log it, reset from the git-tracked seed, and
+    // continue, rather than failing every future request on this
+    // container until a fresh cold start happens to occur.
     logger.error('data_file_corrupt_reseeding', { collection, message: e.message });
     const fresh = seedFrom(collection);
     fs.writeFileSync(fp, fresh);
@@ -92,67 +104,124 @@ function readAll(collection) {
   }
 }
 
-function writeAll(collection, records) {
+function writeAllFile(collection, records) {
   ensureDataDir();
   const fp = filePath(collection);
   const tmpFp = `${fp}.${process.pid}.${Date.now()}.tmp`;
   const json = JSON.stringify(records, null, 2);
   // Write-then-rename instead of writing fp directly: a rename is atomic
-  // on POSIX filesystems (including Vercel's /tmp), so a request that gets
-  // interrupted mid-write (timeout, crash, cold-start eviction) can never
-  // leave fp itself truncated/corrupt for the next request to trip over —
-  // it either has the old complete content or the new complete content,
-  // never a partial write.
+  // on POSIX filesystems, so a request interrupted mid-write can never
+  // leave fp itself truncated for the next request to trip over.
   fs.writeFileSync(tmpFp, json);
   fs.renameSync(tmpFp, fp);
 }
 
-let seq = Date.now();
-function nextId(prefix) {
-  seq += 1;
-  return `${prefix}_${seq.toString(36)}`;
+const fileBackend = {
+  async readAll(collection) {
+    return readAllFile(collection);
+  },
+  async writeAll(collection, records) {
+    writeAllFile(collection, records);
+  },
+};
+
+// ---------------------------------------------------------------------
+// Redis backend (Upstash REST) — one key per collection, holding the
+// full array. @upstash/redis auto-JSON-(de)serializes values, so no
+// manual JSON.stringify/parse is needed here (verified empirically
+// against a mock of the real Upstash /pipeline wire format).
+// ---------------------------------------------------------------------
+let redisClient = null;
+async function getRedisClient() {
+  if (redisClient) return redisClient;
+  const { Redis } = await import('@upstash/redis');
+  redisClient = new Redis({ url: REDIS_URL, token: REDIS_TOKEN });
+  return redisClient;
+}
+
+function redisKey(collection) {
+  return `gvs:${collection}`;
+}
+
+let seededCollections = new Set();
+async function seedIfMissingRedis(collection) {
+  if (seededCollections.has(collection)) return;
+  const redis = await getRedisClient();
+  const key = redisKey(collection);
+  const existing = await redis.get(key);
+  if (existing === null || existing === undefined) {
+    const seed = JSON.parse(seedFrom(collection) || '[]');
+    await redis.set(key, seed);
+  }
+  seededCollections.add(collection);
+}
+
+const redisBackend = {
+  async readAll(collection) {
+    await seedIfMissingRedis(collection);
+    const redis = await getRedisClient();
+    const value = await redis.get(redisKey(collection));
+    return Array.isArray(value) ? value : [];
+  },
+  async writeAll(collection, records) {
+    const redis = await getRedisClient();
+    await redis.set(redisKey(collection), records);
+    seededCollections.add(collection);
+  },
+};
+
+const backend = REDIS_ENABLED ? redisBackend : fileBackend;
+
+if (REDIS_ENABLED) {
+  logger.info('data_store_backend', { backend: 'upstash-redis', instanceId: INSTANCE_ID });
+} else {
+  logger.info('data_store_backend', { backend: 'json-file', instanceId: INSTANCE_ID, dataDir: DATA_DIR });
 }
 
 export const db = {
   instanceId: INSTANCE_ID,
   dataDir: DATA_DIR,
+  backend: REDIS_ENABLED ? 'redis' : 'file',
   // Record count only — never used to log actual content — so this is
   // safe to include in diagnostic logs even for sensitive collections.
-  count(collection) {
-    return readAll(collection).length;
+  async count(collection) {
+    const all = await backend.readAll(collection);
+    return all.length;
   },
-  list(collection, filterFn) {
-    const all = readAll(collection);
+  async list(collection, filterFn) {
+    const all = await backend.readAll(collection);
     return filterFn ? all.filter(filterFn) : all;
   },
-  get(collection, id) {
-    return readAll(collection).find((r) => r.id === id) || null;
+  async get(collection, id) {
+    const all = await backend.readAll(collection);
+    return all.find((r) => r.id === id) || null;
   },
-  findOne(collection, filterFn) {
-    return readAll(collection).find(filterFn) || null;
+  async findOne(collection, filterFn) {
+    const all = await backend.readAll(collection);
+    return all.find(filterFn) || null;
   },
-  create(collection, record, idPrefix = collection.slice(0, 3)) {
-    const all = readAll(collection);
-    const doc = { id: nextId(idPrefix), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...record };
+  async create(collection, record, idPrefix = collection.slice(0, 3)) {
+    const all = await backend.readAll(collection);
+    const doc = stampCreate({ id: nextId(idPrefix), ...record });
     all.push(doc);
-    writeAll(collection, all);
+    await backend.writeAll(collection, all);
     return doc;
   },
-  update(collection, id, patch) {
-    const all = readAll(collection);
+  async update(collection, id, patch) {
+    const all = await backend.readAll(collection);
     const idx = all.findIndex((r) => r.id === id);
     if (idx === -1) return null;
     all[idx] = { ...all[idx], ...patch, id, updatedAt: new Date().toISOString() };
-    writeAll(collection, all);
+    await backend.writeAll(collection, all);
     return all[idx];
   },
-  remove(collection, id) {
-    const all = readAll(collection);
+  async remove(collection, id) {
+    const all = await backend.readAll(collection);
     const next = all.filter((r) => r.id !== id);
-    writeAll(collection, next);
+    await backend.writeAll(collection, next);
     return next.length !== all.length;
   },
-  raw: { readAll, writeAll },
+  raw: { readAll: (collection) => backend.readAll(collection), writeAll: (collection, records) => backend.writeAll(collection, records) },
 };
 
 export default db;
