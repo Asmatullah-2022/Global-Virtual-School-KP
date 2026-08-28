@@ -13,7 +13,7 @@ AI_API_KEY=<your provider API key>
 AI_MODEL=claude-sonnet-5   # optional, provider-specific model id
 ```
 Defaults per provider if `AI_MODEL` is left unset: `claude-sonnet-5`
-(anthropic), `gpt-4o-mini` (openai), `gemini-2.0-flash-lite` (gemini).
+(anthropic), `gpt-4o-mini` (openai), `gemini-3.1-flash-lite` (gemini).
 
 Restart the server. `GET /api/admin/system-status` (admin only) and
 `GET /api/health` (no login required — provider, resolved model, and a
@@ -33,16 +33,22 @@ configuration.
   `x-goog-api-key` header (never a `?key=` query parameter, so it can't end
   up copied into a log line or browser history) and calls
   `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`.
-- **Model selection**: defaults to `gemini-2.0-flash-lite` — the lighter
-  "-lite" sibling of `gemini-2.0-flash`, chosen specifically because Google
-  grants it a more generous free-tier request quota (not just because it's
-  cheaper per token), which is exactly what matters when testing on a free
-  key. Set `GEMINI_MODEL=<model id>` to override it independently of the
-  generic `AI_MODEL` — useful if you switch `AI_PROVIDER` back to
-  anthropic/openai later without wanting to also change the Gemini choice,
-  or if you want to trade free-tier headroom for a more capable model
-  (e.g. `GEMINI_MODEL=gemini-2.0-flash` or a newer release). Resolution
-  order: `GEMINI_MODEL` → `AI_MODEL` → the built-in default.
+- **Model selection**: defaults to `gemini-3.1-flash-lite`, Google's
+  current lightweight/cost-effective model, free-tier eligible with no
+  credit card required. The entire Gemini 2.0 family (`gemini-2.0-flash`,
+  `gemini-2.0-flash-lite`, and their `-001` variants — a previous default
+  here) was retired by Google on 2026-06-01; requesting any of those now
+  returns a `NOT_FOUND` error (`errorCategory: "Model unavailable"`), not
+  a rate limit. Set `GEMINI_MODEL=<model id>` to override the default
+  independently of the generic `AI_MODEL` — useful if you switch
+  `AI_PROVIDER` back to anthropic/openai later without wanting to also
+  change the Gemini choice, if you want to trade free-tier headroom for a
+  larger model (e.g. `GEMINI_MODEL=gemini-3.1-flash`), or if Google
+  retires this model too and you need a fast override without a code
+  change. Resolution order: `GEMINI_MODEL` → `AI_MODEL` → the built-in
+  default. Check Google's own deprecations page
+  (ai.google.dev/gemini-api/docs/deprecations) before relying on any
+  specific model long-term.
 
 ## Without a key
 
