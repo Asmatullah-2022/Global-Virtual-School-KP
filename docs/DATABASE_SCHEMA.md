@@ -8,10 +8,13 @@ all async — every call must be `await`ed), backed by one of two implementation
   external services required. **Only safe on a host that runs one
   long-running process** (local dev, Bonto, Render) — see the Vercel
   caveat below.
-- **Optional**: Upstash Redis, activated automatically when
-  `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are both set (see
-  `.env.example`). Each collection is stored as one Redis key (e.g.
-  `gvs:users`) holding the full array, via `@upstash/redis`'s REST client.
+- **Optional**: Upstash Redis, activated automatically when a REST URL+token
+  pair is set — either `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
+  (Upstash's own naming) or `KV_REST_API_URL`/`KV_REST_API_TOKEN` (the
+  naming Vercel's own "Storage" integration flow uses for the same
+  Upstash-backed database — both are recognized, see `.env.example`).
+  Each collection is stored as one Redis key (e.g. `gvs:users`) holding
+  the full array, via `@upstash/redis`'s REST client.
 
 Neither is meant for production concurrency or scale in the long run —
 migrate to Firestore or Supabase/Postgres before real launch (the
@@ -28,9 +31,13 @@ so login reports "Invalid email or password" for an account that was, in
 fact, successfully created. This is invisible in local dev and on
 single-process hosts, where every request hits the same process.
 Provisioning Upstash Redis (a free tier is available via the Vercel
-Marketplace, under your project's Storage tab, which auto-injects both
-`UPSTASH_REDIS_REST_*` variables) fixes this: every container talks to the
-same shared Redis database over HTTP instead of a private local file.
+Marketplace, under your project's Storage tab) fixes this: every
+container talks to the same shared Redis database over HTTP instead of a
+private local file. Depending on how the database gets connected to the
+project, Vercel auto-injects either `UPSTASH_REDIS_REST_*` or
+`KV_REST_API_*` variables (see above) — check `/api/health`'s
+`dataStore.backend` field after connecting to confirm it switched from
+`"file"` to `"redis"`.
 
 ## Collections
 
