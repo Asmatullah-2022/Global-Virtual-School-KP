@@ -57,6 +57,37 @@ const GEMINI_ERROR_CATEGORIES = {
   INTERNAL: 'Gemini API error',
 };
 
+// A strict, explicit instruction block for the "5 MCQs" quick action.
+// Appended to the prompt only when mode === 'mcq5' -- every other mode
+// (including the four other quick actions, which never send a mode at
+// all) builds the exact same prompt as before this feature existed, so
+// Explain Simply/Quiz Me/Hint/Summarize are byte-for-byte unaffected.
+function mcq5Instruction(language, gradeContext) {
+  return [
+    'IMPORTANT -- the student selected the "5 MCQs" quick action. You MUST follow this exactly:',
+    `- Generate EXACTLY 5 multiple-choice questions about the topic below, appropriate for ${gradeContext ? `Grade ${gradeContext}` : 'the student’s grade level'}.`,
+    '- Number the questions 1 to 5.',
+    '- Each question must have EXACTLY 4 answer options, labeled A), B), C), and D).',
+    '- Immediately after each question’s 4 options, add one line: "Correct answer: <letter>" naming the correct option.',
+    `- Write the entire response in ${language} -- questions, options, and answer labels all in ${language}.`,
+    '- Do NOT include a general explanation, introduction, summary, or any text about the topic beyond the 5 questions themselves -- output ONLY the 5 numbered questions with their 4 options and correct answer each.',
+  ].join('\n');
+}
+
+// Builds the exact prompt content sent to whichever provider is active.
+// Shared by all three callX() functions below so a mode's behavior (and
+// its absence, for every existing quick action) is identical regardless
+// of AI_PROVIDER -- Anthropic, OpenAI, and Gemini all get the same
+// instructions, not three independently-maintained copies that could
+// drift apart.
+function buildUserContent({ question, language, gradeContext, kbContext, mode }) {
+  const parts = [`Grade context: ${gradeContext || 'unspecified'}`, `Preferred language: ${language}`];
+  if (kbContext) parts.push(`Relevant GVS knowledge base excerpts:\n${kbContext}`);
+  if (mode === 'mcq5') parts.push(mcq5Instruction(language, gradeContext));
+  parts.push(`Student question: ${question}`);
+  return parts.join('\n\n');
+}
+
 function providerError(data, status, categories, providerType, providerLabel) {
   const err = new Error(data.error?.message || `${providerLabel} error (HTTP ${status}).`);
   err.status = status;
@@ -96,7 +127,7 @@ async function fetchProviderJson(url, options, { categories, extractType, provid
 const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
-async function callAnthropic({ question, language, gradeContext, kbContext }) {
+async function callAnthropic({ question, language, gradeContext, kbContext, mode }) {
   const data = await fetchProviderJson(
     'https://api.anthropic.com/v1/messages',
     {
@@ -108,16 +139,9 @@ async function callAnthropic({ question, language, gradeContext, kbContext }) {
       },
       body: JSON.stringify({
         model: config.aiModel || DEFAULT_ANTHROPIC_MODEL,
-        max_tokens: 1024,
+        max_tokens: mode === 'mcq5' ? 2048 : 1024,
         system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-              kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-            }\nStudent question: ${question}`,
-          },
-        ],
+        messages: [{ role: 'user', content: buildUserContent({ question, language, gradeContext, kbContext, mode }) }],
       }),
     },
     { categories: ANTHROPIC_ERROR_CATEGORIES, extractType: (d) => d.error?.type || null, providerLabel: 'Anthropic' }
@@ -125,7 +149,7 @@ async function callAnthropic({ question, language, gradeContext, kbContext }) {
   return data.content?.[0]?.text || '';
 }
 
-async function callOpenAI({ question, language, gradeContext, kbContext }) {
+async function callOpenAI({ question, language, gradeContext, kbContext, mode }) {
   const data = await fetchProviderJson(
     'https://api.openai.com/v1/chat/completions',
     {
@@ -138,12 +162,7 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
         model: config.aiModel || DEFAULT_OPENAI_MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-              kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-            }\nStudent question: ${question}`,
-          },
+          { role: 'user', content: buildUserContent({ question, language, gradeContext, kbContext, mode }) },
         ],
       }),
     },
@@ -172,7 +191,7 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
 // to trade free-tier headroom for a larger model.
 const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
-async function callGemini({ question, language, gradeContext, kbContext }) {
+async function callGemini({ question, language, gradeContext, kbContext, mode }) {
   const model = config.geminiModel || config.aiModel || DEFAULT_GEMINI_MODEL;
   // geminiApiKey (from GEMINI_API_KEY) takes priority over the shared
   // aiApiKey, mirroring the model resolution above -- lets Gemini's key
@@ -188,19 +207,8 @@ async function callGemini({ question, language, gradeContext, kbContext }) {
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-                  kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-                }\nStudent question: ${question}`,
-              },
-            ],
-          },
-        ],
-        generationConfig: { maxOutputTokens: 1024 },
+        contents: [{ role: 'user', parts: [{ text: buildUserContent({ question, language, gradeContext, kbContext, mode }) }] }],
+        generationConfig: { maxOutputTokens: mode === 'mcq5' ? 2048 : 1024 },
       }),
     },
     { categories: GEMINI_ERROR_CATEGORIES, extractType: (d) => d.error?.status || null, providerLabel: 'Gemini' }
@@ -268,7 +276,7 @@ export function apiKeyDiagnostics() {
   return { source: key ? 'AI_API_KEY' : null, length: key ? key.length : 0, looksLikeGoogleAiStudioKey: null };
 }
 
-export async function askAiTeacher({ question, language, gradeContext, subject }) {
+export async function askAiTeacher({ question, language, gradeContext, subject, mode }) {
   const lang = SUPPORTED_LANGUAGES.includes(language) ? language : 'English';
   const kbMatches = await searchKnowledgeBase({ query: question, grade: gradeContext, subject });
   const kbContext = kbMatches.map((m) => `- (${m.grade || 'general'}/${m.subject || 'general'}) ${m.topic}: ${m.content}`).join('\n');
@@ -285,7 +293,7 @@ export async function askAiTeacher({ question, language, gradeContext, subject }
 
   try {
     const caller = config.aiProvider === 'gemini' ? callGemini : config.aiProvider === 'openai' ? callOpenAI : callAnthropic;
-    const answer = await caller({ question, language: lang, gradeContext, kbContext });
+    const answer = await caller({ question, language: lang, gradeContext, kbContext, mode });
     return {
       configured: true,
       answer,

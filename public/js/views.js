@@ -211,7 +211,7 @@ Views.ai = {
         </div>
         <div class="ai-quick">
           <button data-q="Explain this topic simply.">Explain simply</button>
-          <button data-q="Give me five MCQs about this topic.">5 MCQs</button>
+          <button data-q="Give me five MCQs about this topic." data-mode="mcq5">5 MCQs</button>
           <button data-q="Quiz me about this topic.">Quiz me</button>
           <button data-q="Give me a hint, not the answer.">Hint</button>
           <button data-q="Summarize this topic in a few sentences.">Summarize</button>
@@ -226,7 +226,21 @@ Views.ai = {
     if (!GVS.isAuthed()) {
       document.querySelector('#ai-result').innerHTML = `<div class="form-error" style="margin-top:14px">Please <button class="link-btn" data-nav="login" style="padding:0">log in</button> to use the AI Teacher.</div>`;
     }
-    document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => (document.querySelector('#ai-question').value = b.dataset.q)));
+    // Tracks which quick-action button (if any) was last clicked, so its
+    // structured `mode` rides along with the next Ask -- set only by a
+    // button that declares data-mode (currently just "5 MCQs"; every
+    // other quick action has no data-mode and leaves this null, so their
+    // requests are byte-identical to before this feature existed).
+    // Cleared the moment the student actually types into the textarea
+    // (a genuine keystroke fires 'input'; setting .value programmatically
+    // via the click handler below does not), since editing the question
+    // means they've moved on from the canned MCQ prompt.
+    let activeMode = null;
+    document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
+      document.querySelector('#ai-question').value = b.dataset.q;
+      activeMode = b.dataset.mode || null;
+    }));
+    document.querySelector('#ai-question').addEventListener('input', () => { activeMode = null; });
     document.querySelector('#ai-ask').addEventListener('click', async () => {
       const question = document.querySelector('#ai-question').value.trim();
       const resultEl = document.querySelector('#ai-result');
@@ -236,7 +250,7 @@ Views.ai = {
       try {
         const language = document.querySelector('#ai-lang').value;
         const gradeContext = document.querySelector('#ai-grade').value;
-        const res = await API.post('/api/ai/ask', { question, language, gradeContext });
+        const res = await API.post('/api/ai/ask', { question, language, gradeContext, mode: activeMode });
         if (res.configured && res.answer) {
           // Urdu and Pashto are RTL scripts -- headings/bullets/rules
           // read correctly only when the container itself is marked RTL,
