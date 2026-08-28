@@ -53,6 +53,12 @@ export const config = {
   aiProvider: env('AI_PROVIDER').toLowerCase(),
   aiApiKey: env('AI_API_KEY'),
   aiModel: env('AI_MODEL'),
+  // Gemini-specific override, checked before the generic AI_MODEL (see
+  // server/services/aiService.js's model resolution order) -- lets the
+  // Gemini model be tuned (e.g. to a lighter free-tier-friendlier variant)
+  // without disturbing AI_MODEL for anyone who later switches AI_PROVIDER
+  // back to anthropic/openai.
+  geminiModel: env('GEMINI_MODEL'),
 
   links: {
     website: 'https://gvskp.org/',

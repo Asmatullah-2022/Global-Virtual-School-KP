@@ -13,12 +13,12 @@ AI_API_KEY=<your provider API key>
 AI_MODEL=claude-sonnet-5   # optional, provider-specific model id
 ```
 Defaults per provider if `AI_MODEL` is left unset: `claude-sonnet-5`
-(anthropic), `gpt-4o-mini` (openai), `gemini-2.0-flash` (gemini).
+(anthropic), `gpt-4o-mini` (openai), `gemini-2.0-flash-lite` (gemini).
 
 Restart the server. `GET /api/admin/system-status` (admin only) and
-`GET /api/health` (no login required — provider name and a configured
-boolean only, never the key) both report whether AI Teacher is
-configured.
+`GET /api/health` (no login required — provider, resolved model, and a
+configured boolean only, never the key) both report the active AI Teacher
+configuration.
 
 ### Gemini-specific notes
 
@@ -26,10 +26,23 @@ configured.
   its free tier is generous enough for testing, but shares a request/token
   quota across everyone using that key; a `RESOURCE_EXHAUSTED` error means
   that quota (or per-minute rate limit) was hit, not that the key is wrong.
+  The AI Teacher page shows this as *"AI Teacher has reached its free-tier
+  usage limit for now..."* rather than a generic failure, and still shows
+  any matching knowledge-base entries underneath.
 - `server/services/aiService.js`'s `callGemini()` sends the key as the
   `x-goog-api-key` header (never a `?key=` query parameter, so it can't end
   up copied into a log line or browser history) and calls
   `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`.
+- **Model selection**: defaults to `gemini-2.0-flash-lite` — the lighter
+  "-lite" sibling of `gemini-2.0-flash`, chosen specifically because Google
+  grants it a more generous free-tier request quota (not just because it's
+  cheaper per token), which is exactly what matters when testing on a free
+  key. Set `GEMINI_MODEL=<model id>` to override it independently of the
+  generic `AI_MODEL` — useful if you switch `AI_PROVIDER` back to
+  anthropic/openai later without wanting to also change the Gemini choice,
+  or if you want to trade free-tier headroom for a more capable model
+  (e.g. `GEMINI_MODEL=gemini-2.0-flash` or a newer release). Resolution
+  order: `GEMINI_MODEL` → `AI_MODEL` → the built-in default.
 
 ## Without a key
 

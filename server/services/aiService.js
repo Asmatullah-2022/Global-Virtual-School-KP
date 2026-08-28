@@ -93,6 +93,9 @@ async function fetchProviderJson(url, options, { categories, extractType, provid
   return data;
 }
 
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
+const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+
 async function callAnthropic({ question, language, gradeContext, kbContext }) {
   const data = await fetchProviderJson(
     'https://api.anthropic.com/v1/messages',
@@ -104,7 +107,7 @@ async function callAnthropic({ question, language, gradeContext, kbContext }) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: config.aiModel || 'claude-sonnet-5',
+        model: config.aiModel || DEFAULT_ANTHROPIC_MODEL,
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: [
@@ -132,7 +135,7 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
         authorization: `Bearer ${config.aiApiKey}`,
       },
       body: JSON.stringify({
-        model: config.aiModel || 'gpt-4o-mini',
+        model: config.aiModel || DEFAULT_OPENAI_MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           {
@@ -154,8 +157,19 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
 // `?key=` query-string parameter -- a header can't end up copied into a
 // log line, error message, or browser history the way a URL can, and
 // Google's API accepts either form.
+//
+// Default model is the "-lite" variant: lighter/cheaper to serve than
+// plain gemini-2.0-flash, which is exactly why Google grants it a more
+// generous free-tier request quota -- the right choice for "simple
+// educational questions" on a free key, not just for raw per-token cost.
+// GEMINI_MODEL overrides this (checked before the generic AI_MODEL, so
+// switching AI_PROVIDER back to anthropic/openai later doesn't require
+// touching this value); set it to plain gemini-2.0-flash or a newer
+// model if quality matters more than free-tier headroom.
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash-lite';
+
 async function callGemini({ question, language, gradeContext, kbContext }) {
-  const model = config.aiModel || 'gemini-2.0-flash';
+  const model = config.geminiModel || config.aiModel || DEFAULT_GEMINI_MODEL;
   const data = await fetchProviderJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -198,6 +212,25 @@ async function callGemini({ question, language, gradeContext, kbContext }) {
   return text;
 }
 
+// Each provider's own machine-readable type for "quota exhausted" or
+// "rate limited", used only to pick a more specific, actionable message
+// than the generic fallback -- e.category already covers this for the
+// small diagnostic line, but the top-level `message` field is what most
+// of the UI actually reads, and "quota exceeded, try again later" is
+// meaningfully different advice from "something went wrong".
+const QUOTA_OR_RATE_LIMIT_TYPES = new Set(['RESOURCE_EXHAUSTED', 'rate_limit_error', 'rate_limit_exceeded', 'insufficient_quota']);
+
+// Resolves to the same model string the active provider's callX()
+// function will actually request -- exposed so /api/health can report
+// it (a model name is not a secret; useful for confirming a config
+// change actually took effect without needing Vercel log access).
+export function resolvedAiModel() {
+  if (config.aiProvider === 'gemini') return config.geminiModel || config.aiModel || DEFAULT_GEMINI_MODEL;
+  if (config.aiProvider === 'openai') return config.aiModel || DEFAULT_OPENAI_MODEL;
+  if (config.aiProvider === 'anthropic') return config.aiModel || DEFAULT_ANTHROPIC_MODEL;
+  return null;
+}
+
 export async function askAiTeacher({ question, language, gradeContext, subject }) {
   const lang = SUPPORTED_LANGUAGES.includes(language) ? language : 'English';
   const kbMatches = await searchKnowledgeBase({ query: question, grade: gradeContext, subject });
@@ -234,7 +267,9 @@ export async function askAiTeacher({ question, language, gradeContext, subject }
       knowledgeBaseMatches: kbMatches,
       error: e.message,
       errorCategory: e.category || null,
-      message: 'The AI Teacher could not respond right now. Please try again shortly.',
+      message: QUOTA_OR_RATE_LIMIT_TYPES.has(e.providerType)
+        ? 'AI Teacher has reached its free-tier usage limit for now. Please try again in a few minutes -- meanwhile, here is what the GVS knowledge base has on this topic (if anything).'
+        : 'The AI Teacher could not respond right now. Please try again shortly.',
     };
   }
 }
