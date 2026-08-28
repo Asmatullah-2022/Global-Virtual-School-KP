@@ -241,7 +241,12 @@ Views.ai = {
           resultEl.innerHTML = `<div class="ai-answer">${esc(res.answer)}</div><div class="ai-disclaimer">${esc(res.disclaimer || '')}</div>`;
         } else {
           const kb = (res.knowledgeBaseMatches || []).map((k) => `<div class="ai-answer">${esc(k.topic)}: ${esc(k.content)}</div>`).join('');
-          resultEl.innerHTML = `<div class="form-error" style="margin-top:14px">${esc(res.message || res.error || 'AI Teacher is unavailable right now.')}</div>${kb}`;
+          // res.errorCategory/res.error (when present) come from the AI
+          // provider's own error response, never from anything secret --
+          // shown here so a failure is diagnosable without opening
+          // browser DevTools or needing server log access.
+          const detail = res.errorCategory || res.error;
+          resultEl.innerHTML = `<div class="form-error" style="margin-top:14px">${esc(res.message || 'AI Teacher is unavailable right now.')}${detail ? `<br><small>${esc(detail)}</small>` : ''}</div>${kb}`;
         }
       } catch (e) {
         resultEl.innerHTML = `<div class="form-error" style="margin-top:14px">${esc(e.message)}</div>`;
