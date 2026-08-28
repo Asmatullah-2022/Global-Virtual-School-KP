@@ -8,12 +8,28 @@ provider and returns only the answer text.
 
 Set in `.env`:
 ```
-AI_PROVIDER=anthropic   # or "openai"
+AI_PROVIDER=anthropic   # or "openai" or "gemini"
 AI_API_KEY=<your provider API key>
 AI_MODEL=claude-sonnet-5   # optional, provider-specific model id
 ```
-Restart the server. `GET /api/admin/system-status` (admin only) reports
-whether AI Teacher is configured.
+Defaults per provider if `AI_MODEL` is left unset: `claude-sonnet-5`
+(anthropic), `gpt-4o-mini` (openai), `gemini-2.0-flash` (gemini).
+
+Restart the server. `GET /api/admin/system-status` (admin only) and
+`GET /api/health` (no login required — provider name and a configured
+boolean only, never the key) both report whether AI Teacher is
+configured.
+
+### Gemini-specific notes
+
+- Get a key from [Google AI Studio](https://aistudio.google.com/apikey) —
+  its free tier is generous enough for testing, but shares a request/token
+  quota across everyone using that key; a `RESOURCE_EXHAUSTED` error means
+  that quota (or per-minute rate limit) was hit, not that the key is wrong.
+- `server/services/aiService.js`'s `callGemini()` sends the key as the
+  `x-goog-api-key` header (never a `?key=` query parameter, so it can't end
+  up copied into a log line or browser history) and calls
+  `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`.
 
 ## Without a key
 
