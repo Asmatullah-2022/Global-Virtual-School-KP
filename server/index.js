@@ -14,7 +14,7 @@ import { jsonBody } from './middleware/bodyParser.js';
 import { requestTimeout } from './middleware/requestTimeout.js';
 import { asyncHandler } from './lib/asyncHandler.js';
 
-import { resolvedAiModel } from './services/aiService.js';
+import { resolvedAiModel, apiKeyDiagnostics } from './services/aiService.js';
 
 import authRoutes from './routes/auth.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
@@ -123,7 +123,15 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
     // model is not a secret (it's visible in every outbound request URL/
     // body already); exposed here so a model/env-var change can be
     // confirmed live without needing Vercel log access.
-    aiTeacher: { configured: config.isAiConfigured(), provider: config.aiProvider || null, model: config.isAiConfigured() ? resolvedAiModel() : null },
+    aiTeacher: {
+      configured: config.isAiConfigured(),
+      provider: config.aiProvider || null,
+      model: config.isAiConfigured() ? resolvedAiModel() : null,
+      // apiKey block never contains the key itself -- see
+      // apiKeyDiagnostics()'s own comment in aiService.js for exactly
+      // what each field can and can't reveal.
+      apiKey: apiKeyDiagnostics(),
+    },
     dataStore: {
       backend: db.backend,
       redisHost: db.redisHost,
