@@ -238,7 +238,11 @@ Views.ai = {
         const gradeContext = document.querySelector('#ai-grade').value;
         const res = await API.post('/api/ai/ask', { question, language, gradeContext });
         if (res.configured && res.answer) {
-          resultEl.innerHTML = `<div class="ai-answer">${esc(res.answer)}</div><div class="ai-disclaimer">${esc(res.disclaimer || '')}</div>`;
+          // Urdu and Pashto are RTL scripts -- headings/bullets/rules
+          // read correctly only when the container itself is marked RTL,
+          // not just the text within it.
+          const dir = language === 'Urdu' || language === 'Pashto' ? ' dir="rtl"' : '';
+          resultEl.innerHTML = `<div class="ai-answer"${dir}>${mdToHtml(res.answer)}</div><div class="ai-disclaimer">${esc(res.disclaimer || '')}</div>`;
         } else {
           const kb = (res.knowledgeBaseMatches || []).map((k) => `<div class="ai-answer">${esc(k.topic)}: ${esc(k.content)}</div>`).join('');
           // res.errorCategory/res.error (when present) come from the AI
