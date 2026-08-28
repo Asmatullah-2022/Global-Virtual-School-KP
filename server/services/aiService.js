@@ -20,99 +20,132 @@ You help students in grades 6-12 with their studies. Rules:
 // human-readable message (https://docs.anthropic.com error object shape:
 // {"error": {"type": "...", "message": "..."}}) -- neither field ever
 // echoes back the request's API key, so both are safe to log and to
-// return to the (already-authenticated) caller. Mapping the type to a
-// plain-language category here means a failure can be diagnosed from the
-// browser alone, without Vercel dashboard/log access.
+// return to the (already-authenticated) caller. Mapping the type to one
+// of a small, consistent set of plain-language categories here means a
+// failure can be diagnosed from the browser alone, without Vercel
+// dashboard/log access -- regardless of which provider is active.
 const ANTHROPIC_ERROR_CATEGORIES = {
-  authentication_error: 'Invalid or revoked API key',
-  permission_error: 'API key does not have permission to use this model',
-  not_found_error: 'Requested model was not found (check AI_MODEL)',
-  rate_limit_error: 'Rate limited by the AI provider',
-  invalid_request_error: 'Request rejected by the AI provider (see message -- often a credit/billing issue)',
-  overloaded_error: 'AI provider is temporarily overloaded',
-  api_error: 'AI provider internal error',
+  authentication_error: 'Invalid API key',
+  permission_error: 'API key does not have access to this model',
+  not_found_error: 'Model unavailable (not found -- check AI_MODEL)',
+  rate_limit_error: 'Quota/rate limit exceeded',
+  invalid_request_error: 'Request rejected by Anthropic (see message -- often a credit/billing issue)',
+  overloaded_error: 'Anthropic API temporarily unavailable',
+  api_error: 'Anthropic API error',
 };
 
 const OPENAI_ERROR_CATEGORIES = {
-  invalid_api_key: 'Invalid or revoked API key',
-  insufficient_quota: 'API key has no remaining credits/quota',
-  model_not_found: 'Requested model was not found (check AI_MODEL)',
-  rate_limit_exceeded: 'Rate limited by the AI provider',
+  invalid_api_key: 'Invalid API key',
+  insufficient_quota: 'Quota/rate limit exceeded (no remaining credits)',
+  model_not_found: 'Model unavailable (not found -- check AI_MODEL)',
+  rate_limit_exceeded: 'Quota/rate limit exceeded',
 };
 
 // Google's Generative Language API error shape is
 // {"error": {"code": <http status>, "message": "...", "status": "<ENUM>"}}
 // -- the enum in `status` (not `code`, which is just the HTTP status
 // repeated) is the machine-readable category, e.g. "RESOURCE_EXHAUSTED"
-// for both quota and rate-limit. Neither field ever echoes back the
-// request's API key.
+// for both quota and rate-limit (the free tier's most common failure).
+// Neither field ever echoes back the request's API key.
 const GEMINI_ERROR_CATEGORIES = {
-  UNAUTHENTICATED: 'Invalid or revoked API key',
-  PERMISSION_DENIED: 'API key does not have permission to use this model',
-  NOT_FOUND: 'Requested model was not found (check AI_MODEL)',
-  RESOURCE_EXHAUSTED: 'Rate limited or out of quota on the AI provider (free-tier limits are easy to hit)',
-  INVALID_ARGUMENT: 'Request rejected by the AI provider (see message)',
-  UNAVAILABLE: 'AI provider is temporarily overloaded',
-  INTERNAL: 'AI provider internal error',
+  UNAUTHENTICATED: 'Invalid API key',
+  PERMISSION_DENIED: 'API key does not have access to this model',
+  NOT_FOUND: 'Model unavailable (not found -- check AI_MODEL)',
+  RESOURCE_EXHAUSTED: 'Quota/rate limit exceeded (Gemini free-tier limits are easy to hit)',
+  INVALID_ARGUMENT: 'Gemini API error (invalid request -- see message)',
+  UNAVAILABLE: 'Gemini API temporarily unavailable',
+  INTERNAL: 'Gemini API error',
 };
 
-function providerError(data, status, categories, providerType) {
-  const err = new Error(data.error?.message || `AI provider error (HTTP ${status}).`);
+function providerError(data, status, categories, providerType, providerLabel) {
+  const err = new Error(data.error?.message || `${providerLabel} error (HTTP ${status}).`);
   err.status = status;
   err.providerType = providerType;
-  err.category = (providerType && categories[providerType]) || `AI provider returned HTTP ${status}`;
+  err.category = (providerType && categories[providerType]) || `${providerLabel} API error (HTTP ${status})`;
   return err;
 }
 
+// Shared by every provider so a failure that never makes it to an HTTP
+// response -- the outbound request itself failing (DNS, TLS, connection
+// reset, a Vercel egress restriction) -- or a response that isn't valid
+// JSON (a proxy/CDN error page in front of the provider) still gets a
+// specific, safe category instead of silently falling back to the bare
+// generic "could not respond" message with no detail at all.
+async function fetchProviderJson(url, options, { categories, extractType, providerLabel }) {
+  let r;
+  try {
+    r = await fetch(url, options);
+  } catch (e) {
+    const err = new Error(`Network error contacting ${providerLabel}: ${e.message}`);
+    err.category = 'Could not reach the AI provider (network error)';
+    throw err;
+  }
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    const err = new Error(`${providerLabel} returned a response that could not be parsed (HTTP ${r.status}).`);
+    err.status = r.status;
+    err.category = 'Unexpected response from the AI provider';
+    throw err;
+  }
+  if (!r.ok) throw providerError(data, r.status, categories, extractType(data), providerLabel);
+  return data;
+}
+
 async function callAnthropic({ question, language, gradeContext, kbContext }) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': config.aiApiKey,
-      'anthropic-version': '2023-06-01',
+  const data = await fetchProviderJson(
+    'https://api.anthropic.com/v1/messages',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': config.aiApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: config.aiModel || 'claude-sonnet-5',
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
+              kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
+            }\nStudent question: ${question}`,
+          },
+        ],
+      }),
     },
-    body: JSON.stringify({
-      model: config.aiModel || 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-            kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-          }\nStudent question: ${question}`,
-        },
-      ],
-    }),
-  });
-  const data = await r.json();
-  if (!r.ok) throw providerError(data, r.status, ANTHROPIC_ERROR_CATEGORIES, data.error?.type || null);
+    { categories: ANTHROPIC_ERROR_CATEGORIES, extractType: (d) => d.error?.type || null, providerLabel: 'Anthropic' }
+  );
   return data.content?.[0]?.text || '';
 }
 
 async function callOpenAI({ question, language, gradeContext, kbContext }) {
-  const r = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${config.aiApiKey}`,
+  const data = await fetchProviderJson(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${config.aiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.aiModel || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
+              kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
+            }\nStudent question: ${question}`,
+          },
+        ],
+      }),
     },
-    body: JSON.stringify({
-      model: config.aiModel || 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-            kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-          }\nStudent question: ${question}`,
-        },
-      ],
-    }),
-  });
-  const data = await r.json();
-  if (!r.ok) throw providerError(data, r.status, OPENAI_ERROR_CATEGORIES, data.error?.code || data.error?.type || null);
+    { categories: OPENAI_ERROR_CATEGORIES, extractType: (d) => d.error?.code || d.error?.type || null, providerLabel: 'OpenAI' }
+  );
   return data.choices?.[0]?.message?.content || '';
 }
 
@@ -123,31 +156,33 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
 // Google's API accepts either form.
 async function callGemini({ question, language, gradeContext, kbContext }) {
   const model = config.aiModel || 'gemini-2.0-flash';
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-goog-api-key': config.aiApiKey,
+  const data = await fetchProviderJson(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': config.aiApiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
+                  kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
+                }\nStudent question: ${question}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: { maxOutputTokens: 1024 },
+      }),
     },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
-                kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
-              }\nStudent question: ${question}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: { maxOutputTokens: 1024 },
-    }),
-  });
-  const data = await r.json();
-  if (!r.ok) throw providerError(data, r.status, GEMINI_ERROR_CATEGORIES, data.error?.status || null);
+    { categories: GEMINI_ERROR_CATEGORIES, extractType: (d) => d.error?.status || null, providerLabel: 'Gemini' }
+  );
   const parts = data.candidates?.[0]?.content?.parts || [];
   const text = parts.map((p) => p.text || '').join('');
   if (!text) {
@@ -156,8 +191,8 @@ async function callGemini({ question, language, gradeContext, kbContext }) {
     // Google's own field, safe to surface the same way a provider error
     // is; never derived from the API key.
     const finishReason = data.candidates?.[0]?.finishReason;
-    const err = new Error(finishReason ? `AI provider returned no text (finishReason: ${finishReason}).` : 'AI provider returned no text.');
-    err.category = finishReason === 'SAFETY' ? 'Response blocked by the AI provider\'s safety filters' : 'AI provider returned an empty response';
+    const err = new Error(finishReason ? `Gemini returned no text (finishReason: ${finishReason}).` : 'Gemini returned no text.');
+    err.category = finishReason === 'SAFETY' ? "Response blocked by Gemini's safety filters" : 'Gemini API error (empty response)';
     throw err;
   }
   return text;
