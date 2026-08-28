@@ -1,7 +1,19 @@
 import jwt from 'jsonwebtoken';
 import config from '../config.js';
 
+// Thrown with a distinct name (rather than letting jsonwebtoken's own
+// generic "secretOrPrivateKey must have a value" surface) so callers can
+// reliably detect "auth isn't configured" specifically, without having to
+// pattern-match an error message string.
+export class AuthNotConfiguredError extends Error {
+  constructor() {
+    super('JWT_SECRET is not configured on the server.');
+    this.name = 'AuthNotConfiguredError';
+  }
+}
+
 export function signToken(user) {
+  if (!config.jwtSecret) throw new AuthNotConfiguredError();
   return jwt.sign(
     { sub: user.id, role: user.role, name: user.name, email: user.email },
     config.jwtSecret,
