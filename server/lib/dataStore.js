@@ -12,9 +12,23 @@
 // Redis (via Upstash's REST API, which needs no persistent TCP connection
 // and so works from a serverless function) fixes that by giving every
 // container the same shared store. It activates automatically, with zero
-// code changes required elsewhere, whenever UPSTASH_REDIS_REST_URL and
-// UPSTASH_REDIS_REST_TOKEN are both present in the environment; otherwise
-// this module behaves exactly as it did before.
+// code changes required elsewhere, whenever a REST URL+token pair is
+// present in the environment; otherwise this module behaves exactly as it
+// did before.
+//
+// Two naming conventions exist for the same thing, depending on how the
+// Upstash database was connected to the Vercel project:
+//   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN — the names used
+//     when connecting directly through Upstash, and the names Upstash's
+//     own docs and the @upstash/redis README use.
+//   - KV_REST_API_URL / KV_REST_API_TOKEN — the names Vercel's Marketplace
+//     "Storage" integration actually injects when an Upstash Redis
+//     database is connected that way (Vercel's KV product is Upstash
+//     under the hood, and the integration carries the KV_* naming even
+//     though the underlying database is a plain Upstash Redis instance).
+// Both are accepted here, UPSTASH_* preferred if both happen to be set,
+// so this activates correctly regardless of which flow was used to
+// connect the database — no dashboard renaming required.
 //
 // The public API (list/get/findOne/create/update/remove/count) is async
 // under both backends now, so callers must await it — the file backend
@@ -31,8 +45,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DIR = path.join(__dirname, '..', 'data');
 const DATA_DIR = process.env.RUNTIME_DATA_DIR || path.join(os.tmpdir(), 'gvs-mobile-app-data');
 
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 const REDIS_ENABLED = Boolean(REDIS_URL && REDIS_TOKEN);
 
 // Generated once when this module is first loaded — i.e. once per cold
@@ -178,10 +192,22 @@ if (REDIS_ENABLED) {
   logger.info('data_store_backend', { backend: 'json-file', instanceId: INSTANCE_ID, dataDir: DATA_DIR });
 }
 
+function redisHost() {
+  if (!REDIS_ENABLED) return null;
+  try {
+    return new URL(REDIS_URL).host;
+  } catch {
+    return 'unparseable';
+  }
+}
+
 export const db = {
   instanceId: INSTANCE_ID,
   dataDir: DATA_DIR,
   backend: REDIS_ENABLED ? 'redis' : 'file',
+  // Hostname only, for diagnostics — never the URL's credentials or the
+  // token. Safe to expose (a hostname alone grants no access).
+  redisHost: redisHost(),
   // Record count only — never used to log actual content — so this is
   // safe to include in diagnostic logs even for sensitive collections.
   async count(collection) {

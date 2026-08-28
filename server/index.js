@@ -80,16 +80,6 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.is
 // after a registration that reported success, is direct, conclusive
 // evidence of an environment/deployment mismatch rather than a data
 // store or password-hashing bug.
-function redisHostFromEnv() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  if (!url) return null;
-  try {
-    return new URL(url).host;
-  } catch {
-    return 'unparseable';
-  }
-}
-
 app.get('/api/health', asyncHandler(async (_req, res) => {
   let usersCount = null;
   let dataStoreError = null;
@@ -105,7 +95,7 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
     authConfigured: config.isAuthConfigured(),
     dataStore: {
       backend: db.backend,
-      redisHost: db.backend === 'redis' ? redisHostFromEnv() : null,
+      redisHost: db.redisHost,
       usersCount,
       error: dataStoreError,
     },
