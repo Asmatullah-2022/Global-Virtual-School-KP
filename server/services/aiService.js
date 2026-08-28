@@ -70,7 +70,7 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
 
 export async function askAiTeacher({ question, language, gradeContext, subject }) {
   const lang = SUPPORTED_LANGUAGES.includes(language) ? language : 'English';
-  const kbMatches = searchKnowledgeBase({ query: question, grade: gradeContext, subject });
+  const kbMatches = await searchKnowledgeBase({ query: question, grade: gradeContext, subject });
   const kbContext = kbMatches.map((m) => `- (${m.grade || 'general'}/${m.subject || 'general'}) ${m.topic}: ${m.content}`).join('\n');
 
   if (!config.isAiConfigured()) {

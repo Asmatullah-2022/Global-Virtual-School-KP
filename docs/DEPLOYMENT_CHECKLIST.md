@@ -12,13 +12,22 @@
 - [ ] `server/index.js` CORS origin list matches your real domain(s)
 
 ## Data store
-- [ ] For any real concurrent user load, migrate off the bundled JSON file
-      store (`server/lib/dataStore.js`) to Firestore or Supabase/Postgres —
-      see `docs/DATABASE_SCHEMA.md` for the target shape. The JSON store is
-      fine for a pilot/demo, not for production traffic.
-- [ ] If staying on the JSON store short-term, ensure the deployment disk is
-      persistent (not ephemeral containers wiping `server/data/` on restart)
-      and back it up regularly.
+- [ ] **On Vercel (or any serverless-function host), the JSON-file store
+      does NOT reliably persist data across requests** — different
+      invocations can land in different containers with separate, private
+      `/tmp` directories, causing symptoms like "registration succeeds,
+      then login says invalid credentials." Provision an Upstash Redis
+      database (Vercel dashboard → your project → Storage tab → Marketplace
+      → Upstash, free tier available) — it auto-injects
+      `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`, which
+      `server/lib/dataStore.js` picks up automatically with no code
+      changes. Redeploy after connecting it. See `docs/DATABASE_SCHEMA.md`.
+- [ ] On a single-process host (local dev, Bonto, Render), the JSON store
+      works as-is — ensure the deployment disk is persistent (not wiped on
+      restart) and back it up regularly.
+- [ ] For any real concurrent user load beyond a pilot, migrate off both of
+      the above to Firestore or Supabase/Postgres — see
+      `docs/DATABASE_SCHEMA.md` for the target shape.
 
 ## Security
 - [ ] Rotate `PAGE_ACCESS_TOKEN`/`META_APP_SECRET`/`AI_API_KEY` on a schedule

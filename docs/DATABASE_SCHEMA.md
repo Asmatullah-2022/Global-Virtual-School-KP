@@ -1,11 +1,36 @@
 # Data Model
 
-Current storage: JSON files under `server/data/`, accessed through
-`server/lib/dataStore.js` (`list/get/findOne/create/update/remove`). This
-keeps the app fully runnable with zero external services, but is **not**
-meant for production concurrency or scale — migrate to Firestore or
-Supabase/Postgres before real launch (the collection/document shape below
-maps directly onto either).
+Current storage: `server/lib/dataStore.js` (`list/get/findOne/create/update/remove`,
+all async — every call must be `await`ed), backed by one of two implementations:
+
+- **Default**: JSON files under `server/data/` (seed) copied into a runtime
+  directory (`RUNTIME_DATA_DIR`, or the OS temp dir) on first use. Zero
+  external services required. **Only safe on a host that runs one
+  long-running process** (local dev, Bonto, Render) — see the Vercel
+  caveat below.
+- **Optional**: Upstash Redis, activated automatically when
+  `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are both set (see
+  `.env.example`). Each collection is stored as one Redis key (e.g.
+  `gvs:users`) holding the full array, via `@upstash/redis`'s REST client.
+
+Neither is meant for production concurrency or scale in the long run —
+migrate to Firestore or Supabase/Postgres before real launch (the
+collection/document shape below maps directly onto either).
+
+## Why the JSON-file store breaks on Vercel
+
+Vercel (and other serverless-function hosts) do not guarantee that
+consecutive requests are served by the same container instance, and each
+container's `/tmp` is private to it. A registration request handled by
+container A writes `users.json` into A's `/tmp`; a login request moments
+later can land in a fresh container B, whose `/tmp` never saw that write —
+so login reports "Invalid email or password" for an account that was, in
+fact, successfully created. This is invisible in local dev and on
+single-process hosts, where every request hits the same process.
+Provisioning Upstash Redis (a free tier is available via the Vercel
+Marketplace, under your project's Storage tab, which auto-injects both
+`UPSTASH_REDIS_REST_*` variables) fixes this: every container talks to the
+same shared Redis database over HTTP instead of a private local file.
 
 ## Collections
 
