@@ -45,7 +45,12 @@ export const config = {
   webhookVerifyToken: env('WEBHOOK_VERIFY_TOKEN'),
   facebookPageUrl: `https://www.facebook.com/profile.php?id=${env('PAGE_ID', '61592435229097')}`,
 
-  aiProvider: env('AI_PROVIDER'),
+  // Lowercased so a dashboard value typed as "Gemini"/"GEMINI"/"OpenAI"
+  // still matches the exact-string comparisons in aiService.js instead of
+  // silently falling through to the Anthropic default -- the provider
+  // selection is otherwise indistinguishable from "not gemini" with no
+  // error at all, which is exactly how this class of bug hides.
+  aiProvider: env('AI_PROVIDER').toLowerCase(),
   aiApiKey: env('AI_API_KEY'),
   aiModel: env('AI_MODEL'),
 
