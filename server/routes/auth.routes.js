@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import db from '../lib/dataStore.js';
-import { signToken, requireAuth } from '../middleware/auth.js';
+import { signToken, requireAuth, AuthNotConfiguredError } from '../middleware/auth.js';
 import logger from '../logger.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 
@@ -43,9 +43,28 @@ router.post('/register', asyncHandler(async (req, res) => {
   stageLog('created_user');
 
   logger.audit('user_registered', { userId: user.id, role });
-  const token = signToken(user);
+
+  // The account is already created and saved at this point — that is the
+  // part of "registration" that actually matters and cannot be undone.
+  // Issuing a session token is a separate, best-effort step layered on
+  // top: if it fails for any reason (e.g. a server misconfiguration), the
+  // registration itself must still be reported as successful rather than
+  // turning a real, saved account into a confusing 500 — the user can
+  // simply log in afterward instead of being auto-signed-in immediately.
+  let token = null;
+  let authWarning;
+  try {
+    token = signToken(user);
+    stageLog('token_issued');
+  } catch (e) {
+    logger.error('post_register_token_failed', { userId: user.id, name: e.name, message: e.message });
+    authWarning = e instanceof AuthNotConfiguredError
+      ? 'Your account was created, but automatic sign-in is temporarily unavailable. Please log in.'
+      : 'Your account was created, but automatic sign-in failed. Please log in.';
+  }
+
   stageLog('sending_response');
-  res.status(201).json({ token, user: publicUser(user) });
+  res.status(201).json({ token, user: publicUser(user), ...(authWarning ? { authWarning } : {}) });
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
@@ -57,7 +76,20 @@ router.post('/login', asyncHandler(async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid email or password.' });
 
   logger.audit('user_login', { userId: user.id });
-  const token = signToken(user);
+  let token;
+  try {
+    token = signToken(user);
+  } catch (e) {
+    logger.error('login_token_failed', { userId: user.id, name: e.name, message: e.message });
+    const err = new Error(
+      e instanceof AuthNotConfiguredError
+        ? 'Sign-in is temporarily unavailable. Please try again shortly.'
+        : 'Could not complete sign-in. Please try again.'
+    );
+    err.name = e.name; // preserve for accurate server-side log categorization
+    err.status = 503;
+    throw err;
+  }
   res.json({ token, user: publicUser(user) });
 }));
 

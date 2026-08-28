@@ -425,9 +425,19 @@ Views.register = {
       msg.innerHTML = '';
       try {
         const res = await API.post('/api/auth/register', body);
-        GVS.setSession(res.token, res.user);
-        msg.innerHTML = `<div class="form-success">Account created. Welcome, ${esc(res.user.name)}.</div>`;
-        setTimeout(() => Router.go('profile'), 400);
+        if (res.token) {
+          // The normal path: account created and a session issued in one step.
+          GVS.setSession(res.token, res.user);
+          msg.innerHTML = `<div class="form-success">Account created. Welcome, ${esc(res.user.name)}.</div>`;
+          setTimeout(() => Router.go('profile'), 400);
+        } else {
+          // The account was still created successfully — the server just
+          // couldn't also issue a session token this time (see
+          // server/routes/auth.routes.js). Don't treat this as a failure:
+          // send them to log in instead of silently doing nothing.
+          msg.innerHTML = `<div class="form-success">${esc(res.authWarning || 'Account created. Please log in.')}</div>`;
+          setTimeout(() => Router.go('login'), 900);
+        }
       } catch (e) {
         msg.innerHTML = `<div class="form-error">${esc(apiErrorText(e))}</div>`;
         btn.disabled = false;
