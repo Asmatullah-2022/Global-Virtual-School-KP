@@ -23,7 +23,7 @@ function classifyError(err) {
   if (['ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'EEXIST', 'ENOSPC', 'EROFS', 'EMFILE'].includes(code)) {
     return 'STORAGE';
   }
-  if (name === 'JsonWebTokenError' || name === 'NotBeforeError' || /secretOrPrivateKey|jwt/i.test(message)) {
+  if (name === 'JsonWebTokenError' || name === 'NotBeforeError' || /secretOrPrivateKey|jwt|expiresIn/i.test(message)) {
     return 'AUTH_CONFIG';
   }
   if (/bcrypt/i.test(message) || /bcrypt/i.test(name)) {
