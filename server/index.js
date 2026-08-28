@@ -114,6 +114,11 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
     commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
     authConfigured: config.isAuthConfigured(),
     jwtSecretDiagnostics: jwtSecretDiagnostics(),
+    // Provider name and a boolean only — never the API key, never any
+    // part of it. Mirrors authConfigured so this can be checked from
+    // /api/health without an admin login (server/routes/admin.routes.js's
+    // /system-status already exposes this same pair, but requires auth).
+    aiTeacher: { configured: config.isAiConfigured(), provider: config.aiProvider || null },
     dataStore: {
       backend: db.backend,
       redisHost: db.redisHost,
