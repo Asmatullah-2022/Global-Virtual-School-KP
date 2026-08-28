@@ -158,15 +158,19 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
 // log line, error message, or browser history the way a URL can, and
 // Google's API accepts either form.
 //
-// Default model is the "-lite" variant: lighter/cheaper to serve than
-// plain gemini-2.0-flash, which is exactly why Google grants it a more
-// generous free-tier request quota -- the right choice for "simple
-// educational questions" on a free key, not just for raw per-token cost.
+// Default model: gemini-3.1-flash-lite. The Gemini 2.0 family
+// (gemini-2.0-flash and gemini-2.0-flash-lite, the previous default
+// here) was retired by Google on 2026-06-01 -- confirmed via Google's
+// own deprecations page (ai.google.dev/gemini-api/docs/deprecations)
+// and release notes, not assumed. gemini-3.1-flash-lite is Google's
+// current lightweight/cost-effective model, free-tier eligible with no
+// credit card required, and is the model id Google's own docs use for
+// API calls (ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite).
 // GEMINI_MODEL overrides this (checked before the generic AI_MODEL, so
 // switching AI_PROVIDER back to anthropic/openai later doesn't require
-// touching this value); set it to plain gemini-2.0-flash or a newer
-// model if quality matters more than free-tier headroom.
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash-lite';
+// touching this value) -- set it if Google retires this model too, or
+// to trade free-tier headroom for a larger model.
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 async function callGemini({ question, language, gradeContext, kbContext }) {
   const model = config.geminiModel || config.aiModel || DEFAULT_GEMINI_MODEL;
