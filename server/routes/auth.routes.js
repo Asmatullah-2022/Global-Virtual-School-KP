@@ -9,12 +9,26 @@ const router = Router();
 const VALID_ROLES = ['student', 'teacher', 'parent', 'school', 'admin'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Consistent normalization used by both register and login — trimmed and
+// lowercased here, once, rather than relying on each call site (or the
+// frontend) to remember to do it the same way every time.
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 // Only students, teachers, parents and schools can self-register.
 // Admin accounts must be provisioned directly by an existing admin (see docs/API.md).
 router.post('/register', asyncHandler(async (req, res) => {
-  const stageLog = (stage) => logger.info('register_stage', { stage, path: req.path });
+  // db.instanceId identifies which cold-start/container this request ran
+  // in; db.count is a record count only (never content) — both safe to
+  // log, and together they're the direct evidence needed to confirm or
+  // rule out cross-container storage isolation as the cause of a login
+  // failure immediately following a successful registration. Never logs
+  // the password or password hash.
+  const stageLog = (stage, extra) => logger.info('register_stage', { stage, path: req.path, instanceId: db.instanceId, ...extra });
   stageLog('start');
-  const { name, email, password, role, grade, school } = req.body || {};
+  const { name, password, role, grade, school } = req.body || {};
+  const email = normalizeEmail(req.body?.email);
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'name, email, password and role are required.' });
   }
@@ -24,15 +38,15 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Invalid role for self-registration.' });
   }
   stageLog('validated');
-  const existing = db.findOne('users', (u) => u.email.toLowerCase() === email.toLowerCase());
+  const existing = db.findOne('users', (u) => u.email === email);
   if (existing) return res.status(409).json({ error: 'An account with this email already exists.' });
-  stageLog('checked_existing');
+  stageLog('checked_existing', { existingUserCount: db.count('users') });
 
   const passwordHash = await bcrypt.hash(password, 12);
   stageLog('hashed_password');
   const user = db.create('users', {
     name,
-    email: email.toLowerCase(),
+    email,
     passwordHash,
     role,
     grade: role === 'student' ? grade || null : null,
@@ -40,9 +54,9 @@ router.post('/register', asyncHandler(async (req, res) => {
     childrenIds: role === 'parent' ? [] : undefined,
     classIds: role === 'teacher' ? [] : undefined,
   }, 'usr');
-  stageLog('created_user');
+  stageLog('created_user', { userId: user.id, userCountAfterCreate: db.count('users') });
 
-  logger.audit('user_registered', { userId: user.id, role });
+  logger.audit('user_registered', { userId: user.id, role, instanceId: db.instanceId });
 
   // The account is already created and saved at this point — that is the
   // part of "registration" that actually matters and cannot be undone.
@@ -68,14 +82,32 @@ router.post('/register', asyncHandler(async (req, res) => {
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body || {};
+  const stageLog = (stage, extra) => logger.info('login_stage', { stage, path: req.path, instanceId: db.instanceId, ...extra });
+  stageLog('start');
+  const { password } = req.body || {};
+  const email = normalizeEmail(req.body?.email);
   if (!email || !password) return res.status(400).json({ error: 'email and password are required.' });
-  const user = db.findOne('users', (u) => u.email.toLowerCase() === String(email).toLowerCase());
-  if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
+  // Diagnostic only — a record count, never content, never the password
+  // or its hash. If this same email was registered moments earlier on a
+  // different container, userCountAtLookup here being 0 (or the user not
+  // being found despite a successful prior registration) is the direct
+  // evidence needed to confirm cross-container storage isolation as the
+  // cause, rather than assuming it.
+  stageLog('looking_up_user', { userCountAtLookup: db.count('users') });
+  const user = db.findOne('users', (u) => u.email === email);
+  if (!user) {
+    stageLog('user_not_found');
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+  stageLog('user_found', { userId: user.id });
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ error: 'Invalid email or password.' });
+  if (!ok) {
+    stageLog('password_mismatch', { userId: user.id });
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+  stageLog('password_ok', { userId: user.id });
 
-  logger.audit('user_login', { userId: user.id });
+  logger.audit('user_login', { userId: user.id, instanceId: db.instanceId });
   let token;
   try {
     token = signToken(user);

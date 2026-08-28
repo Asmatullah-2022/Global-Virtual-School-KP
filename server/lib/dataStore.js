@@ -25,12 +25,23 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import logger from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_DIR = path.join(__dirname, '..', 'data');
 const DATA_DIR = process.env.RUNTIME_DATA_DIR || path.join(os.tmpdir(), 'gvs-mobile-app-data');
+
+// Generated once when this module is first loaded — i.e. once per cold
+// start / container instance, not once per request. On a host whose
+// serverless functions can route different requests to different,
+// isolated container instances (each with its own /tmp), two requests a
+// few seconds apart logging two *different* instance IDs is direct proof
+// that they ran in separate containers with separate, non-shared copies
+// of this JSON-file store — the specific failure mode this ID exists to
+// either confirm or rule out, rather than guess at.
+export const INSTANCE_ID = crypto.randomBytes(4).toString('hex');
 
 function ensureDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -103,6 +114,13 @@ function nextId(prefix) {
 }
 
 export const db = {
+  instanceId: INSTANCE_ID,
+  dataDir: DATA_DIR,
+  // Record count only — never used to log actual content — so this is
+  // safe to include in diagnostic logs even for sensitive collections.
+  count(collection) {
+    return readAll(collection).length;
+  },
   list(collection, filterFn) {
     const all = readAll(collection);
     return filterFn ? all.filter(filterFn) : all;
