@@ -18,7 +18,14 @@ Defaults per provider if `AI_MODEL` is left unset: `claude-sonnet-5`
 Restart the server. `GET /api/admin/system-status` (admin only) and
 `GET /api/health` (no login required — provider, resolved model, and a
 configured boolean only, never the key) both report the active AI Teacher
-configuration.
+configuration. `/api/health`'s `aiTeacher.apiKey` block also reports,
+still without ever exposing the key itself: which env var it came from
+(`source`), its length (`length` — an integer alone can't reconstruct a
+secret, but does confirm the value isn't empty or a stray placeholder),
+and whether it starts with Google's public `AIza` key prefix
+(`looksLikeGoogleAiStudioKey` — `false` here is near-conclusive evidence
+the stored value isn't a real Google key at all, e.g. it's still a
+leftover key from a different provider).
 
 ### Gemini-specific notes
 
@@ -29,6 +36,17 @@ configuration.
   The AI Teacher page shows this as *"AI Teacher has reached its free-tier
   usage limit for now..."* rather than a generic failure, and still shows
   any matching knowledge-base entries underneath.
+- **Key**: `GEMINI_API_KEY` takes priority over the shared `AI_API_KEY`
+  (checked first — see resolution order below). Set it if you've ever used
+  `AI_API_KEY` for a different provider before, so Gemini definitely uses
+  its own value rather than whatever `AI_API_KEY` currently holds. Paste
+  only the raw key — a value saved with surrounding quote characters
+  (e.g. `"AIza..."`, literal quotes included) is a common dashboard paste
+  mistake that produces exactly the same `INVALID_ARGUMENT` /
+  `"API key not valid"` error as a genuinely wrong key; both `AI_API_KEY`
+  and `GEMINI_API_KEY` now have one layer of wrapping quotes stripped
+  automatically as a safety net, but don't rely on that — copy just the
+  key itself.
 - `server/services/aiService.js`'s `callGemini()` sends the key as the
   `x-goog-api-key` header (never a `?key=` query parameter, so it can't end
   up copied into a log line or browser history) and calls

@@ -174,13 +174,17 @@ const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 async function callGemini({ question, language, gradeContext, kbContext }) {
   const model = config.geminiModel || config.aiModel || DEFAULT_GEMINI_MODEL;
+  // geminiApiKey (from GEMINI_API_KEY) takes priority over the shared
+  // aiApiKey, mirroring the model resolution above -- lets Gemini's key
+  // be set and rotated independently of whatever AI_API_KEY holds.
+  const apiKey = config.geminiApiKey || config.aiApiKey;
   const data = await fetchProviderJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-goog-api-key': config.aiApiKey,
+        'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
@@ -233,6 +237,35 @@ export function resolvedAiModel() {
   if (config.aiProvider === 'openai') return config.aiModel || DEFAULT_OPENAI_MODEL;
   if (config.aiProvider === 'anthropic') return config.aiModel || DEFAULT_ANTHROPIC_MODEL;
   return null;
+}
+
+// Safe-to-expose diagnostics about the API key that will actually be
+// used -- never the key itself, never any substring of its secret
+// portion. `source` says which env var it came from (so "did my new
+// GEMINI_API_KEY actually take effect" is answerable without log
+// access). `length` is just an integer -- on its own it cannot be used
+// to reconstruct or guess the key, but it does let you sanity-check that
+// the stored value isn't empty, isn't a stray placeholder, and isn't
+// dramatically the wrong length for the key type (a Google AI Studio key
+// is consistently ~39 characters; an Anthropic key is well over 100).
+// `looksLikeGoogleAiStudioKey` checks only for the fixed "AIza" prefix
+// that EVERY Google API key shares (a public, documented convention
+// carrying zero entropy from any individual secret -- Google's own docs
+// reference it openly) -- false here is near-conclusive evidence the
+// stored value isn't a real Google AI Studio key at all (e.g. it's still
+// a leftover Anthropic key, which starts with "sk-ant-").
+export function apiKeyDiagnostics() {
+  if (config.aiProvider === 'gemini') {
+    const source = config.geminiApiKey ? 'GEMINI_API_KEY' : config.aiApiKey ? 'AI_API_KEY' : null;
+    const key = config.geminiApiKey || config.aiApiKey || '';
+    return {
+      source,
+      length: key ? key.length : 0,
+      looksLikeGoogleAiStudioKey: key ? key.startsWith('AIza') : null,
+    };
+  }
+  const key = config.aiApiKey || '';
+  return { source: key ? 'AI_API_KEY' : null, length: key ? key.length : 0, looksLikeGoogleAiStudioKey: null };
 }
 
 export async function askAiTeacher({ question, language, gradeContext, subject }) {
