@@ -25,7 +25,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   // rule out cross-container storage isolation as the cause of a login
   // failure immediately following a successful registration. Never logs
   // the password or password hash.
-  const stageLog = (stage, extra) => logger.info('register_stage', { stage, path: req.path, instanceId: db.instanceId, ...extra });
+  const stageLog = (stage, extra) => logger.info('register_stage', { stage, path: req.path, instanceId: db.instanceId, backend: db.backend, ...extra });
   stageLog('start');
   const { name, password, role, grade, school } = req.body || {};
   const email = normalizeEmail(req.body?.email);
@@ -82,7 +82,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
-  const stageLog = (stage, extra) => logger.info('login_stage', { stage, path: req.path, instanceId: db.instanceId, ...extra });
+  const stageLog = (stage, extra) => logger.info('login_stage', { stage, path: req.path, instanceId: db.instanceId, backend: db.backend, ...extra });
   stageLog('start');
   const { password } = req.body || {};
   const email = normalizeEmail(req.body?.email);

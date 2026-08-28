@@ -7,10 +7,12 @@ import { fileURLToPath } from 'url';
 
 import config from './config.js';
 import logger from './logger.js';
+import db from './lib/dataStore.js';
 import { attachUser } from './middleware/auth.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { jsonBody } from './middleware/bodyParser.js';
 import { requestTimeout } from './middleware/requestTimeout.js';
+import { asyncHandler } from './lib/asyncHandler.js';
 
 import authRoutes from './routes/auth.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
@@ -66,14 +68,49 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.is
 // browser (open /api/health) instead of guessing whether a push has
 // actually gone live, which has been the recurring source of confusion
 // in getting registration fixes verified on this deployment.
-app.get('/api/health', (_req, res) =>
+// dataStore diagnostics below are deliberately limited to non-sensitive
+// facts: which backend is active, the Redis hostname (never the token —
+// a hostname alone grants no access), and a record count (never
+// content). This exists specifically to answer, from the browser alone
+// and without Vercel dashboard/log access, the question that has caused
+// repeated confusion across Preview vs Production deployments: "is this
+// exact domain even looking at the Redis database I think it is, and
+// does it currently have any users in it?" Two domains reporting
+// different redisHost values, or a domain reporting usersCount: 0 right
+// after a registration that reported success, is direct, conclusive
+// evidence of an environment/deployment mismatch rather than a data
+// store or password-hashing bug.
+function redisHostFromEnv() {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'unparseable';
+  }
+}
+
+app.get('/api/health', asyncHandler(async (_req, res) => {
+  let usersCount = null;
+  let dataStoreError = null;
+  try {
+    usersCount = await db.count('users');
+  } catch (e) {
+    dataStoreError = e.name || 'unknown';
+  }
   res.json({
     status: 'ok',
     time: new Date().toISOString(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
     authConfigured: config.isAuthConfigured(),
-  })
-);
+    dataStore: {
+      backend: db.backend,
+      redisHost: db.backend === 'redis' ? redisHostFromEnv() : null,
+      usersCount,
+      error: dataStoreError,
+    },
+  });
+}));
 app.use('/api/auth', authRoutes);
 app.use('/api/facebook', facebookRoutes);
 app.use('/api/content', contentRoutes);
