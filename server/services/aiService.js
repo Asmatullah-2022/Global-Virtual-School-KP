@@ -40,8 +40,23 @@ const OPENAI_ERROR_CATEGORIES = {
   rate_limit_exceeded: 'Rate limited by the AI provider',
 };
 
-function providerError(data, status, categories) {
-  const providerType = data.error?.type || data.error?.code || null;
+// Google's Generative Language API error shape is
+// {"error": {"code": <http status>, "message": "...", "status": "<ENUM>"}}
+// -- the enum in `status` (not `code`, which is just the HTTP status
+// repeated) is the machine-readable category, e.g. "RESOURCE_EXHAUSTED"
+// for both quota and rate-limit. Neither field ever echoes back the
+// request's API key.
+const GEMINI_ERROR_CATEGORIES = {
+  UNAUTHENTICATED: 'Invalid or revoked API key',
+  PERMISSION_DENIED: 'API key does not have permission to use this model',
+  NOT_FOUND: 'Requested model was not found (check AI_MODEL)',
+  RESOURCE_EXHAUSTED: 'Rate limited or out of quota on the AI provider (free-tier limits are easy to hit)',
+  INVALID_ARGUMENT: 'Request rejected by the AI provider (see message)',
+  UNAVAILABLE: 'AI provider is temporarily overloaded',
+  INTERNAL: 'AI provider internal error',
+};
+
+function providerError(data, status, categories, providerType) {
   const err = new Error(data.error?.message || `AI provider error (HTTP ${status}).`);
   err.status = status;
   err.providerType = providerType;
@@ -72,7 +87,7 @@ async function callAnthropic({ question, language, gradeContext, kbContext }) {
     }),
   });
   const data = await r.json();
-  if (!r.ok) throw providerError(data, r.status, ANTHROPIC_ERROR_CATEGORIES);
+  if (!r.ok) throw providerError(data, r.status, ANTHROPIC_ERROR_CATEGORIES, data.error?.type || null);
   return data.content?.[0]?.text || '';
 }
 
@@ -97,8 +112,55 @@ async function callOpenAI({ question, language, gradeContext, kbContext }) {
     }),
   });
   const data = await r.json();
-  if (!r.ok) throw providerError(data, r.status, OPENAI_ERROR_CATEGORIES);
+  if (!r.ok) throw providerError(data, r.status, OPENAI_ERROR_CATEGORIES, data.error?.code || data.error?.type || null);
   return data.choices?.[0]?.message?.content || '';
+}
+
+// Google Generative Language API (Gemini). The key is sent as the
+// x-goog-api-key header rather than the documented alternative of a
+// `?key=` query-string parameter -- a header can't end up copied into a
+// log line, error message, or browser history the way a URL can, and
+// Google's API accepts either form.
+async function callGemini({ question, language, gradeContext, kbContext }) {
+  const model = config.aiModel || 'gemini-2.0-flash';
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': config.aiApiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Grade context: ${gradeContext || 'unspecified'}\nPreferred language: ${language}\n${
+                kbContext ? `Relevant GVS knowledge base excerpts:\n${kbContext}\n` : ''
+              }\nStudent question: ${question}`,
+            },
+          ],
+        },
+      ],
+      generationConfig: { maxOutputTokens: 1024 },
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw providerError(data, r.status, GEMINI_ERROR_CATEGORIES, data.error?.status || null);
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = parts.map((p) => p.text || '').join('');
+  if (!text) {
+    // A response can come back HTTP 200 with no text -- most commonly the
+    // model stopped for a safety/recitation reason. finishReason is
+    // Google's own field, safe to surface the same way a provider error
+    // is; never derived from the API key.
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const err = new Error(finishReason ? `AI provider returned no text (finishReason: ${finishReason}).` : 'AI provider returned no text.');
+    err.category = finishReason === 'SAFETY' ? 'Response blocked by the AI provider\'s safety filters' : 'AI provider returned an empty response';
+    throw err;
+  }
+  return text;
 }
 
 export async function askAiTeacher({ question, language, gradeContext, subject }) {
@@ -117,7 +179,7 @@ export async function askAiTeacher({ question, language, gradeContext, subject }
   }
 
   try {
-    const caller = config.aiProvider === 'openai' ? callOpenAI : callAnthropic;
+    const caller = config.aiProvider === 'gemini' ? callGemini : config.aiProvider === 'openai' ? callOpenAI : callAnthropic;
     const answer = await caller({ question, language: lang, gradeContext, kbContext });
     return {
       configured: true,

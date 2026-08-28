@@ -143,9 +143,9 @@ switches to the live feed automatically once these are set — no further
 code change needed.
 
 ### AI Teacher
-1. Pick a provider: `AI_PROVIDER=anthropic` or `AI_PROVIDER=openai`.
+1. Pick a provider: `AI_PROVIDER=anthropic`, `AI_PROVIDER=openai`, or `AI_PROVIDER=gemini`.
 2. Set `AI_API_KEY` to a real key from that provider's account.
-3. Optionally set `AI_MODEL` (defaults to `claude-sonnet-5` for Anthropic, `gpt-4o-mini` for OpenAI).
+3. Optionally set `AI_MODEL` (defaults to `claude-sonnet-5` for Anthropic, `gpt-4o-mini` for OpenAI, `gemini-2.0-flash` for Gemini).
 
 Until then: `/api/ai/ask` returns an honest "AI Teacher is not yet connected"
 message plus any matching knowledge-base entries — the full UI (language
