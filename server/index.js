@@ -62,7 +62,19 @@ app.use('/api/auth/register', authLimiter);
 
 app.use(attachUser);
 
-app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.isProd ? '1d' : 0 }));
+// sw.js is deliberately excluded from the 1-day cache: the browser's
+// service-worker update check works by re-fetching this exact file and
+// diffing its bytes against what's installed, and only THEN installs a
+// new worker (which is what actually clears/repopulates the app-shell
+// cache below). A stale HTTP-cached copy of sw.js means the browser
+// never even notices anything changed, so a deploy can silently never
+// reach users regardless of what else ships correctly.
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  maxAge: config.isProd ? '1d' : 0,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 // VERCEL_GIT_COMMIT_SHA is set automatically by Vercel for every
 // deployment — no configuration needed, nothing to add. Included here
