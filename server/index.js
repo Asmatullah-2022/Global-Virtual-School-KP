@@ -60,7 +60,20 @@ app.use(attachUser);
 
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.isProd ? '1d' : 0 }));
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+// VERCEL_GIT_COMMIT_SHA is set automatically by Vercel for every
+// deployment — no configuration needed, nothing to add. Included here
+// specifically so the actual deployed commit can be checked from a
+// browser (open /api/health) instead of guessing whether a push has
+// actually gone live, which has been the recurring source of confusion
+// in getting registration fixes verified on this deployment.
+app.get('/api/health', (_req, res) =>
+  res.json({
+    status: 'ok',
+    time: new Date().toISOString(),
+    commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
+    authConfigured: config.isAuthConfigured(),
+  })
+);
 app.use('/api/auth', authRoutes);
 app.use('/api/facebook', facebookRoutes);
 app.use('/api/content', contentRoutes);
