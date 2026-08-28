@@ -80,6 +80,26 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.is
 // after a registration that reported success, is direct, conclusive
 // evidence of an environment/deployment mismatch rather than a data
 // store or password-hashing bug.
+// Reads the RAW env var directly (not config.jwtSecret, which is already
+// trimmed) so this can distinguish, without ever revealing the secret
+// itself: the key not being present under this exact name at all (a
+// case/spelling mismatch between what's typed into Vercel and JWT_SECRET
+// — env var names are case-sensitive) vs. present but empty vs. present
+// but whitespace-only (trimmedLength 0 with rawLength > 0 — an
+// easy-to-miss stray space/newline from copy-paste) vs. present with
+// real content but happening to equal the exact placeholder string.
+// Every field here is a length (an integer) or a boolean — none of them
+// can be used to reconstruct or guess the actual secret value.
+function jwtSecretDiagnostics() {
+  const raw = process.env.JWT_SECRET;
+  return {
+    keyPresent: raw !== undefined,
+    rawLength: raw === undefined ? null : raw.length,
+    trimmedLength: raw === undefined ? null : raw.trim().length,
+    matchesPlaceholderExactly: raw === 'CHANGE_ME_TO_A_LONG_RANDOM_SECRET',
+  };
+}
+
 app.get('/api/health', asyncHandler(async (_req, res) => {
   let usersCount = null;
   let dataStoreError = null;
@@ -93,6 +113,7 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
     time: new Date().toISOString(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
     authConfigured: config.isAuthConfigured(),
+    jwtSecretDiagnostics: jwtSecretDiagnostics(),
     dataStore: {
       backend: db.backend,
       redisHost: db.redisHost,
