@@ -123,7 +123,19 @@ main{padding-bottom:80px;min-height:60vh}
 .ai-box textarea{width:100%;min-height:100px;margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:12px;resize:vertical;font-family:inherit}
 .ai-quick{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 .ai-quick button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:12px;cursor:pointer}
-.ai-answer{margin-top:14px;padding:14px;background:#f0f6f1;border-radius:12px;white-space:pre-line;line-height:1.5}
+.ai-answer{margin-top:14px;padding:14px;background:#f0f6f1;border-radius:12px;line-height:1.6;word-wrap:break-word;overflow-wrap:break-word}
+.ai-answer>*:first-child{margin-top:0}
+.ai-answer>*:last-child{margin-bottom:0}
+.ai-answer p{margin:0 0 10px}
+.ai-answer h1,.ai-answer h2,.ai-answer h3,.ai-answer h4,.ai-answer h5,.ai-answer h6{margin:14px 0 8px;line-height:1.3}
+.ai-answer h1{font-size:20px}
+.ai-answer h2{font-size:18px}
+.ai-answer h3{font-size:16px}
+.ai-answer h4,.ai-answer h5,.ai-answer h6{font-size:14px}
+.ai-answer strong{font-weight:700}
+.ai-answer ul,.ai-answer ol{margin:0 0 10px;padding-inline-start:22px}
+.ai-answer li{margin:4px 0}
+.ai-answer hr{border:none;border-top:1px solid var(--line);margin:14px 0}
 .ai-disclaimer{font-size:11px;color:var(--muted);margin-top:10px}
 select,input[type=text],input[type=email],input[type=password]{padding:10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit}
 
