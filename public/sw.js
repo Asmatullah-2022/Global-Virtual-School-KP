@@ -23,7 +23,23 @@ const SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
+  // Deliberately NOT cache.addAll(SHELL_ASSETS) -- that fetches each URL
+  // with the browser's default caching, which the 1-day Cache-Control
+  // this server sends for static assets can satisfy from the HTTP disk
+  // cache. A returning student whose browser already has yesterday's
+  // views.js/router.js on disk would then get a brand-new CACHE_NAME
+  // (this worker really did update) populated with yesterday's bytes
+  // anyway -- the exact same "the fix never reaches the browser" failure
+  // this whole cache-busting mechanism exists to prevent, just moved one
+  // layer deeper. Each asset is fetched with { cache: 'reload' } instead,
+  // the same bypass the fetch handler below already uses for its own
+  // background revalidation, so install always populates the cache from
+  // the network, never from a stale disk-cached response.
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(SHELL_ASSETS.map((url) => fetch(url, { cache: 'reload' }).then((response) => cache.put(url, response))))
+    )
+  );
   self.skipWaiting();
 });
 
