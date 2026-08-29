@@ -25,6 +25,45 @@ router.get('/grades/:grade', asyncHandler(async (req, res) => {
   res.json({ grade });
 }));
 
+// --- Video Lessons / Notes / Quizzes (admin-managed via the same generic
+// collection CRUD as updates/liveClasses/languageCourses -- see
+// admin.routes.js's MANAGED_COLLECTIONS). Each item carries a grade and
+// subjectId so a request can scope to exactly the grade/subject the
+// student is viewing, same as the grades/subjects structure above. ---
+function requireGradeSubject(req, res) {
+  const { grade, subject } = req.query;
+  if (!grade || !subject) {
+    res.status(400).json({ error: 'grade and subject query parameters are required.' });
+    return null;
+  }
+  return { grade: String(grade), subject: String(subject) };
+}
+function forThisGradeSubject(item, grade, subject) {
+  return published(item) && String(item.grade) === grade && item.subjectId === subject;
+}
+
+router.get('/lessons', asyncHandler(async (req, res) => {
+  const gs = requireGradeSubject(req, res);
+  if (!gs) return;
+  const raw = await db.list('lessons', (l) => forThisGradeSubject(l, gs.grade, gs.subject));
+  const items = raw.sort((a, b) => (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0));
+  res.json({ lessons: items });
+}));
+
+router.get('/notes', asyncHandler(async (req, res) => {
+  const gs = requireGradeSubject(req, res);
+  if (!gs) return;
+  const items = await db.list('notes', (n) => forThisGradeSubject(n, gs.grade, gs.subject));
+  res.json({ notes: items });
+}));
+
+router.get('/quizzes', asyncHandler(async (req, res) => {
+  const gs = requireGradeSubject(req, res);
+  if (!gs) return;
+  const items = await db.list('quizzes', (q) => forThisGradeSubject(q, gs.grade, gs.subject));
+  res.json({ quizzes: items });
+}));
+
 // --- Updates / Announcements / Events (admin-managed, date-driven expiry) ---
 router.get('/updates', asyncHandler(async (req, res) => {
   const { category } = req.query;

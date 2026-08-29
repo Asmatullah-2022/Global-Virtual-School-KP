@@ -77,10 +77,12 @@ main{padding-bottom:80px;min-height:60vh}
 .grid.four{grid-template-columns:repeat(4,1fr)}
 .grid.three{grid-template-columns:repeat(3,1fr)}
 .grid.two{grid-template-columns:repeat(2,1fr)}
-.tile,.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.tile,.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:transform .1s ease,box-shadow .15s ease}
 .tile .ic{font-size:24px}
 .tile b{font-size:13.5px;color:var(--navy)}
 .tile span{color:var(--muted);font-size:11.5px}
+.tile:hover,.card:hover,.course:hover{box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.tile:active,.card:active,.course:active{transform:scale(.97)}
 
 /* ---------- Feed / posts ---------- */
 .feed{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:12px}
@@ -116,6 +118,16 @@ main{padding-bottom:80px;min-height:60vh}
 .course small{color:var(--muted)}
 .breadcrumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
 .breadcrumb button{border:0;background:none;color:var(--green2);font-weight:700;cursor:pointer;padding:0}
+
+/* ---------- Video Lessons / Notes / Quiz ---------- */
+.lesson-thumb{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:#eaf0eb}
+.lesson-thumb-placeholder{display:flex;align-items:center;justify-content:center;font-size:30px}
+.video-wrap{margin-top:10px}
+.video-wrap iframe,.video-wrap video{width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+.quiz-question{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.quiz-question:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.quiz-option{display:block;margin-top:8px;font-size:13.5px;cursor:pointer}
+.quiz-option input{margin-right:8px}
 
 /* ---------- AI Teacher ---------- */
 .ai-box{max-width:680px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px}
