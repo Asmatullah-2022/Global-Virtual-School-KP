@@ -82,6 +82,7 @@ function mcq5Instruction(language, gradeContext) {
     `- Generate EXACTLY 5 multiple-choice questions about the topic below, appropriate for ${gradeContext ? `Grade ${gradeContext}` : 'the student’s grade level'}.`,
     '- Number the questions 1. 2. 3. 4. 5. -- always using plain Latin digits (1, 2, 3, 4, 5), never spelled out and never in another script\'s numerals.',
     '- Every single question must have EXACTLY 4 answer options -- never 2, never 3, never 5 or more. Always exactly 4.',
+    '- This EXACT four-option rule applies to EVERY grade without exception, including Grade 1 and other early grades -- for a younger student, simplify the WORDING and vocabulary only. Never reduce the number of options because the grade is young; that is not what "simple" means here.',
     '- Label the 4 options A) B) C) D) -- always these exact plain Latin letters, in this exact order, even when the response language is Urdu or Pashto.',
     '- Immediately after each question\'s 4 options, add one line in exactly this format: "Correct answer: <letter>" (the word "Correct answer:" stays in English, followed by a single letter A, B, C, or D) -- exactly one correct answer per question.',
     `- Translate the question text and the 4 option texts into ${language}. Do NOT translate the question numbers (1.-5.), the option letters (A) B) C) D)), or the words "Correct answer:" -- those stay exactly as specified above in every language, including ${language}.`,
@@ -362,25 +363,31 @@ export async function askAiTeacher({ question, language, gradeContext, subject, 
     };
   }
 
+  // mcq5 gets up to 3 attempts total (1 original + 2 retries) before
+  // giving up. A smaller/lighter model can drift from the exact format on
+  // a harder combination -- this exact failure was reported for Grade 1
+  // Pashto, where the model's own bias to "keep it simple for a young
+  // grade" (from SYSTEM_PROMPT) can bleed into also dropping an option,
+  // which is why mcq5Instruction() now explicitly says that bias must
+  // never reduce the option count. A single retry isn't enough headroom
+  // against a systematic (not just random) drift like that, so this
+  // allows two independent fresh calls to recover before failing cleanly.
+  const MCQ5_MAX_ATTEMPTS = 3;
+
   try {
     const caller = config.aiProvider === 'gemini' ? callGemini : config.aiProvider === 'openai' ? callOpenAI : callAnthropic;
-    let answer = await caller({ question, language: lang, gradeContext, kbContext, mode });
-
-    if (mode === 'mcq5' && !isValidMcq5(answer)) {
-      // A smaller/lighter model can drift from the exact format on a
-      // harder combination (this exact failure was reported for Grade 1
-      // Pashto: only 3 options came back instead of 4). One retry with a
-      // fresh call catches the model's own non-determinism -- providers
-      // don't reliably repeat the identical mistake twice given the same
-      // strict prompt. Never logs the malformed content itself, only that
-      // a retry happened, safe the same way every other diagnostic here is.
-      logger.info('mcq5_format_invalid_retrying', { provider: config.aiProvider, language: lang, gradeContext: gradeContext || null });
+    let answer;
+    for (let attempt = 1; attempt <= (mode === 'mcq5' ? MCQ5_MAX_ATTEMPTS : 1); attempt++) {
       answer = await caller({ question, language: lang, gradeContext, kbContext, mode });
-      if (!isValidMcq5(answer)) {
-        const err = new Error('AI provider could not produce a correctly formatted 5-question MCQ set (5 questions x 4 options x 1 correct answer) after a retry.');
+      if (mode !== 'mcq5' || isValidMcq5(answer)) break;
+      if (attempt === MCQ5_MAX_ATTEMPTS) {
+        const err = new Error(`AI provider could not produce a correctly formatted 5-question MCQ set (5 questions x 4 options x 1 correct answer) after ${MCQ5_MAX_ATTEMPTS} attempts.`);
         err.category = 'AI provider returned incorrectly formatted MCQs -- please try again';
         throw err;
       }
+      // Never logs the malformed content itself, only that a retry
+      // happened -- safe the same way every other diagnostic here is.
+      logger.info('mcq5_format_invalid_retrying', { provider: config.aiProvider, language: lang, gradeContext: gradeContext || null, attempt });
     }
 
     return {

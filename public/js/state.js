@@ -50,7 +50,16 @@ function mdToHtml(md) {
     para = [];
   }
   function flushList() {
-    if (list) blocks.push(`<${list.tag}>${list.items.map((it) => `<li>${mdInline(it)}</li>`).join('')}</${list.tag}>`);
+    if (list) {
+      // start=N (only needed/emitted for 'ol') keeps a numbered list's
+      // visible number correct even when it was re-opened as a fresh
+      // single-item <ol> -- e.g. each MCQ question is its own <ol>
+      // because the answer-option lines between them aren't list syntax,
+      // so without this every question would render as "1." instead of
+      // counting 1-5.
+      const startAttr = list.tag === 'ol' && list.start != null ? ` start="${list.start}"` : '';
+      blocks.push(`<${list.tag}${startAttr}>${list.items.map((it) => `<li>${mdInline(it)}</li>`).join('')}</${list.tag}>`);
+    }
     list = null;
   }
 
@@ -83,11 +92,11 @@ function mdToHtml(md) {
       continue;
     }
 
-    const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+    const numbered = line.match(/^(\d+)[.)]\s+(.*)$/);
     if (numbered) {
       flushPara();
-      if (!list || list.tag !== 'ol') { flushList(); list = { tag: 'ol', items: [] }; }
-      list.items.push(numbered[1]);
+      if (!list || list.tag !== 'ol') { flushList(); list = { tag: 'ol', items: [], start: Number(numbered[1]) }; }
+      list.items.push(numbered[2]);
       continue;
     }
 
