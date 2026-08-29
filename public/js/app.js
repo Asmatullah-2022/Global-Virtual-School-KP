@@ -107,7 +107,27 @@
   await Router.render();
 
   // --- Service worker for app-shell offline caching ---
+  // A deploy is only actually visible to an already-open browser once a
+  // NEW service worker installs and takes control -- the browser's own
+  // update check (re-fetching sw.js and diffing its bytes) otherwise
+  // runs on its own internal schedule, which can be throttled to about
+  // once a day. `registration.update()` forces that check right now, on
+  // every page load, instead of waiting on it -- this is what makes a
+  // fix that changed sw.js's served bytes (see server/index.js) actually
+  // reach a returning student on their very next visit rather than
+  // sometime up to a day later. `controllerchange` fires exactly once,
+  // when the new worker takes over an already-controlled page (never on
+  // a fresh install, so this never reloads a first-time visitor); the
+  // sessionStorage guard is a backstop against a reload loop if a worker
+  // somehow kept re-activating.
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      registration.update().catch(() => {});
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (sessionStorage.getItem('gvs_sw_reloaded')) return;
+        sessionStorage.setItem('gvs_sw_reloaded', '1');
+        location.reload();
+      });
+    }).catch(() => {});
   }
 })();

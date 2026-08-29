@@ -59,90 +59,121 @@ const GEMINI_ERROR_CATEGORIES = {
   INTERNAL: 'Gemini API error',
 };
 
+// Per-language mcq5 structural convention. English and Urdu keep the
+// original Latin scheme (A/B/C/D + "Correct answer:") -- unchanged,
+// previously verified and not reported broken. Pashto uses the option
+// labels (الف/ب/ج/د) and a Pashto correct-answer phrase instead: forcing
+// Latin A/B/C/D onto Pashto output was tried across several rounds and
+// the model kept reverting to these native labels regardless of the
+// instruction (visible in a real production screenshot -- ۱./۲./۳./۴.
+// numbering, الف)/ب)/ج) option labels, no "Correct answer:" line, even
+// an unrequested greeting before the questions). الف/ب/ج/د is also the
+// conventional way a Pashto-medium quiz is actually labeled, so this
+// works with the model's own strong prior instead of fighting it.
+const MCQ5_FORMAT = {
+  English: { optionLabels: ['A', 'B', 'C', 'D'], correctAnswerPhrase: 'Correct answer' },
+  Urdu: { optionLabels: ['A', 'B', 'C', 'D'], correctAnswerPhrase: 'Correct answer' },
+  Pashto: { optionLabels: ['الف', 'ب', 'ج', 'د'], correctAnswerPhrase: 'سمه ځواب' },
+};
+function mcq5Format(language) {
+  return MCQ5_FORMAT[language] || MCQ5_FORMAT.English;
+}
+
+// A full worked example in the SAME language as the request, not just an
+// English example with translated structural markers -- a same-language
+// example is a far stronger anchor for the model to imitate than a
+// meta-instruction describing markers to keep untranslated, which is
+// exactly the part that kept being ignored for Pashto.
+const MCQ5_EXAMPLES = {
+  English: ['1. What color is the sky on a clear day?', 'A) Green', 'B) Blue', 'C) Red', 'D) Yellow', 'Correct answer: B'],
+  Urdu: ['1. صاف دن میں آسمان کا رنگ کیا ہوتا ہے؟', 'A) سبز', 'B) نیلا', 'C) سرخ', 'D) پیلا', 'Correct answer: B'],
+  Pashto: ['1. په روښانه ورځ کې د اسمان رنګ څه دی؟', 'الف) شین', 'ب) نیلی', 'ج) سور', 'د) زیړ', 'سمه ځواب: ب'],
+};
+
 // A strict, explicit instruction block for the "5 MCQs" quick action.
 // Appended to the prompt only when mode === 'mcq5' -- every other mode
 // (including the four other quick actions, which never send a mode at
 // all) builds the exact same prompt as before this feature existed, so
 // Explain Simply/Quiz Me/Hint/Summarize are byte-for-byte unaffected.
-//
-// Structural markers (question numbers, option letters, the "Correct
-// answer:" label) are pinned to plain Latin digits/letters/English text
-// regardless of the response language -- only the actual question and
-// option wording is translated. This is what the requirement itself
-// specifies (four options literally labeled A/B/C/D), and it also makes
-// the output reliably machine-parseable by isValidMcq5() below: without
-// this, a smaller/lighter model answering in Urdu or Pashto for a very
-// young grade (the exact combination that failed in production -- Grade
-// 1 Pashto) can drift into using localized numerals/lettering or drop an
-// option entirely, and there would be no fixed anchor left to validate
-// against in any language.
 function mcq5Instruction(language, gradeContext) {
+  const format = mcq5Format(language);
+  const [l1, l2, l3, l4] = format.optionLabels;
+  const example = MCQ5_EXAMPLES[language] || MCQ5_EXAMPLES.English;
   return [
     'IMPORTANT -- the student selected the "5 MCQs" quick action. You MUST follow this exactly, with NO exceptions for the requested language or grade level:',
     `- Generate EXACTLY 5 multiple-choice questions about the topic below, appropriate for ${gradeContext ? `Grade ${gradeContext}` : 'the student’s grade level'}.`,
-    '- Number the questions 1. 2. 3. 4. 5. -- always using plain Latin digits (1, 2, 3, 4, 5), never spelled out and never in another script\'s numerals.',
+    '- Number the questions 1. 2. 3. 4. 5. using plain digits 1-5.',
     '- Every single question must have EXACTLY 4 answer options -- never 2, never 3, never 5 or more. Always exactly 4.',
     '- This EXACT four-option rule applies to EVERY grade without exception, including Grade 1 and other early grades -- for a younger student, simplify the WORDING and vocabulary only. Never reduce the number of options because the grade is young; that is not what "simple" means here.',
-    '- Label the 4 options A) B) C) D) -- always these exact plain Latin letters, in this exact order, even when the response language is Urdu or Pashto.',
-    '- Immediately after each question\'s 4 options, add one line in exactly this format: "Correct answer: <letter>" (the word "Correct answer:" stays in English, followed by a single letter A, B, C, or D) -- exactly one correct answer per question.',
-    `- Translate the question text and the 4 option texts into ${language}. Do NOT translate the question numbers (1.-5.), the option letters (A) B) C) D)), or the words "Correct answer:" -- those stay exactly as specified above in every language, including ${language}.`,
-    '- Do NOT include a general explanation, introduction, summary, or any text about the topic beyond the 5 questions themselves -- output ONLY the 5 numbered questions with their 4 options and correct answer each.',
+    `- Label the 4 options exactly ${l1}) ${l2}) ${l3}) ${l4}) in this exact order -- this is the required labeling convention for ${language}.`,
+    `- Immediately after each question's 4 options, add one line in exactly this format: "${format.correctAnswerPhrase}: <label>" using one of ${l1}, ${l2}, ${l3}, ${l4} -- exactly one correct answer per question.`,
+    '- Do NOT include a general explanation, introduction, greeting, summary, or any text about the topic beyond the 5 questions themselves -- output ONLY the 5 numbered questions with their 4 options and correct answer each.',
     '',
-    'Example of the exact required format for ONE question (follow this pattern for all 5, translating only the question/option wording):',
-    '1. What color is the sky on a clear day?',
-    'A) Green',
-    'B) Blue',
-    'C) Red',
-    'D) Yellow',
-    'Correct answer: B',
+    `Example of the exact required format for ONE question in ${language} (follow this pattern for all 5):`,
+    ...example,
   ].join('\n');
 }
 
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Parses mode:'mcq5' output into { options: string[], correctAnswer }
-// per question, using ONLY the plain-Latin structural markers the prompt
-// above pins in place regardless of response language -- so this same
-// parser validates English, Urdu, and Pashto output identically; it
-// never has to understand the language itself, only find "1." through
-// "5.", "A)" through "D)", and "Correct answer: <letter>".
-function parseMcq5Questions(text) {
+// per question. The option-marker regex deliberately matches ANY
+// leading run of Unicode letters immediately followed by ')' or '.' --
+// not just the labels this language is supposed to use -- so a stray or
+// wrong marker (an unexpected 5th option, or the wrong script/letters
+// entirely) is still counted by the parser and can be rejected by
+// isValidMcq5() below for not matching the expected label set, rather
+// than silently invisible because it fell outside a hardcoded
+// allow-list (the exact gap that let a genuine 5-option violation
+// through in an earlier version of this parser). Question numbers
+// accept either plain digits or Eastern Arabic-Indic digits (۱-۵) --
+// the model has been observed using either for Urdu/Pashto output, and
+// which digit style was used isn't part of what this needs to enforce.
+function parseMcq5Questions(text, language) {
+  const numberRe = /^([1-5]|[۱۲۳۴۵])[.)]\s*(.*)$/;
+  const optionRe = /^([\p{L}]+)[).]\s*(.+)$/u;
+  const format = mcq5Format(language);
+  const correctRe = new RegExp(`${escapeRegExp(format.correctAnswerPhrase)}\\s*[:：]\\s*([\\p{L}]+)`, 'iu');
   const questions = [];
   let current = null;
   for (const rawLine of String(text ?? '').split('\n')) {
     const line = rawLine.trim();
-    const qMatch = line.match(/^([1-5])[.)]\s*(.*)$/);
-    if (qMatch) {
-      current = { number: qMatch[1], options: [], correctAnswer: null };
+    if (numberRe.test(line)) {
+      current = { options: [], correctAnswer: null };
       questions.push(current);
       continue;
     }
     if (!current) continue;
-    // Matches ANY single uppercase-letter option marker, not just A-D --
-    // a stray 5th option lettered E (or beyond) must be counted so
-    // isValidMcq5() below can reject it for violating "exactly 4", not
-    // silently ignore it because the letter fell outside a hardcoded range.
-    const optMatch = line.match(/^([A-Z])[).]\s*(.+)$/);
+    const optMatch = line.match(optionRe);
     if (optMatch) {
       current.options.push(optMatch[1]);
       continue;
     }
-    const ansMatch = line.match(/Correct answer:\s*([A-Z])\b/i);
-    if (ansMatch) current.correctAnswer = ansMatch[1].toUpperCase();
+    const ansMatch = line.match(correctRe);
+    if (ansMatch) current.correctAnswer = ansMatch[1];
   }
   return questions;
 }
 
 // The invariant the user needs guaranteed: exactly 5 questions, each
-// with exactly 4 distinct options (A-D) and exactly one correct answer
-// that's actually one of those 4 options. True/false only if every part
-// of that holds -- a single malformed question fails the whole response,
-// since a partially-correct MCQ set is exactly the confusing failure
-// mode this exists to catch.
-function isValidMcq5(text) {
-  const questions = parseMcq5Questions(text);
+// with exactly 4 distinct options matching this language's exact label
+// set and exactly one correct answer that's actually one of those 4
+// options. True/false only if every part of that holds -- a single
+// malformed question fails the whole response, since a
+// partially-correct MCQ set is exactly the confusing failure mode this
+// exists to catch.
+function isValidMcq5(text, language) {
+  const format = mcq5Format(language);
+  const expected = new Set(format.optionLabels);
+  const questions = parseMcq5Questions(text, language);
   if (questions.length !== 5) return false;
   return questions.every((q) => {
     const uniqueOptions = new Set(q.options);
-    return q.options.length === 4 && uniqueOptions.size === 4 && q.correctAnswer && uniqueOptions.has(q.correctAnswer);
+    if (q.options.length !== 4 || uniqueOptions.size !== 4) return false;
+    for (const opt of uniqueOptions) if (!expected.has(opt)) return false;
+    return Boolean(q.correctAnswer) && expected.has(q.correctAnswer) && uniqueOptions.has(q.correctAnswer);
   });
 }
 
@@ -379,7 +410,7 @@ export async function askAiTeacher({ question, language, gradeContext, subject, 
     let answer;
     for (let attempt = 1; attempt <= (mode === 'mcq5' ? MCQ5_MAX_ATTEMPTS : 1); attempt++) {
       answer = await caller({ question, language: lang, gradeContext, kbContext, mode });
-      if (mode !== 'mcq5' || isValidMcq5(answer)) break;
+      if (mode !== 'mcq5' || isValidMcq5(answer, lang)) break;
       if (attempt === MCQ5_MAX_ATTEMPTS) {
         const err = new Error(`AI provider could not produce a correctly formatted 5-question MCQ set (5 questions x 4 options x 1 correct answer) after ${MCQ5_MAX_ATTEMPTS} attempts.`);
         err.category = 'AI provider returned incorrectly formatted MCQs -- please try again';
