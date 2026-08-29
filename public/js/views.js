@@ -210,11 +210,11 @@ Views.ai = {
           <select id="ai-grade"><option value="">Any grade</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => `<option value="${g}">Grade ${g}</option>`).join('')}</select>
         </div>
         <div class="ai-quick">
-          <button data-q="Explain this topic simply.">Explain simply</button>
+          <button data-q="Explain this topic simply." data-mode="explain">Explain simply</button>
           <button data-q="Give me five MCQs about this topic." data-mode="mcq5">5 MCQs</button>
-          <button data-q="Quiz me about this topic.">Quiz me</button>
-          <button data-q="Give me a hint, not the answer.">Hint</button>
-          <button data-q="Summarize this topic in a few sentences.">Summarize</button>
+          <button data-q="Quiz me about this topic." data-mode="quiz">Quiz me</button>
+          <button data-q="Give me a hint, not the answer." data-mode="hint">Hint</button>
+          <button data-q="Summarize this topic in a few sentences." data-mode="summarize">Summarize</button>
         </div>
         <textarea id="ai-question" placeholder="e.g. Explain photosynthesis"></textarea>
         <button class="primary" id="ai-ask">Ask AI Teacher</button>
@@ -227,14 +227,15 @@ Views.ai = {
       document.querySelector('#ai-result').innerHTML = `<div class="form-error" style="margin-top:14px">Please <button class="link-btn" data-nav="login" style="padding:0">log in</button> to use the AI Teacher.</div>`;
     }
     // Tracks which quick-action button (if any) was last clicked, so its
-    // structured `mode` rides along with the next Ask -- set only by a
-    // button that declares data-mode (currently just "5 MCQs"; every
-    // other quick action has no data-mode and leaves this null, so their
-    // requests are byte-identical to before this feature existed).
+    // structured `mode` rides along with the next Ask -- every quick
+    // action button now declares data-mode, so the server gets an
+    // explicit, reliable signal of which action was chosen instead of
+    // relying only on the canned question text. A freeform typed
+    // question (no button clicked) still leaves this null.
     // Cleared the moment the student actually types into the textarea
     // (a genuine keystroke fires 'input'; setting .value programmatically
     // via the click handler below does not), since editing the question
-    // means they've moved on from the canned MCQ prompt.
+    // means they've moved on from the canned prompt.
     let activeMode = null;
     document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
       document.querySelector('#ai-question').value = b.dataset.q;

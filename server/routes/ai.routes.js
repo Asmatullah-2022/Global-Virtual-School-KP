@@ -13,11 +13,13 @@ router.get('/languages', (_req, res) => res.json({ languages: SUPPORTED_LANGUAGE
 // Recognized structured request modes -- each one carries an explicit,
 // non-negotiable instruction appended to the prompt server-side (see
 // aiService.js), rather than relying on the quick-action button's canned
-// question text alone to steer the AI's output format. Anything not in
-// this set (including undefined/omitted, which is every existing quick
-// action and any freeform typed question) falls through to the exact
-// same prompt as before this feature existed.
-const VALID_MODES = new Set(['mcq5']);
+// question text alone to steer the AI's output format. mcq5 is the
+// strict, structurally-validated one; explain/quiz/hint/summarize are
+// lighter prose-mode reinforcements for the other four quick actions.
+// Anything not in this set (including undefined/omitted, i.e. a
+// freeform typed question with no quick action selected) falls through
+// to the exact same ungated prompt as before any mode existed.
+const VALID_MODES = new Set(['mcq5', 'explain', 'quiz', 'hint', 'summarize']);
 
 router.post('/ask', requireAuth, asyncHandler(async (req, res) => {
   const { question, language, gradeContext, subject, mode } = req.body || {};
