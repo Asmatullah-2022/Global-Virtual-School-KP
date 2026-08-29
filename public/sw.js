@@ -2,15 +2,20 @@
 // API responses are never cached here (the backend already handles Facebook
 // feed caching/fallback), so students always see fresh data when online.
 //
-// CACHE_NAME must change whenever any file in SHELL_ASSETS changes. This
-// isn't just an ID: the browser's service-worker update check re-fetches
-// this exact file (server/index.js now excludes it from HTTP caching so
-// that fetch is never itself stale) and diffs its bytes -- if this file's
-// content is byte-identical to what's installed, the browser correctly
-// concludes nothing changed and never installs a new worker, so a deploy
-// can silently never take effect no matter what shipped. Bump the suffix
-// on every deploy that touches an HTML/CSS/JS shell asset.
-const CACHE_NAME = 'gvs-shell-v2';
+// CACHE_NAME must change whenever any file in SHELL_ASSETS (or this
+// file's own caching logic) changes -- the browser's service-worker
+// update check works by re-fetching this exact file and diffing its
+// bytes, and only installs a new worker if something differs. A manually
+// typed version string (the previous approach here) is exactly the kind
+// of thing that's easy to forget to bump -- it silently happened three
+// times in a row after the first fix for this, each shipping a real fix
+// that never reached any browser that had already installed the old
+// worker. __CACHE_VERSION__ is replaced by server/index.js at request
+// time with a hash of this file's own logic plus every SHELL_ASSETS
+// file's actual current content, so a cache-busting version is generated
+// automatically and can't be forgotten -- this exact literal string must
+// stay exactly as-is; do not hardcode a version here again.
+const CACHE_NAME = 'gvs-shell-__CACHE_VERSION__';
 const SHELL_ASSETS = [
   '/', '/index.html', '/css/styles.css',
   '/js/api.js', '/js/state.js', '/js/views.js', '/js/router.js', '/js/app.js',

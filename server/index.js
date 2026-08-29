@@ -3,6 +3,8 @@ import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 import config from './config.js';
@@ -62,18 +64,58 @@ app.use('/api/auth/register', authLimiter);
 
 app.use(attachUser);
 
-// sw.js is deliberately excluded from the 1-day cache: the browser's
-// service-worker update check works by re-fetching this exact file and
-// diffing its bytes against what's installed, and only THEN installs a
-// new worker (which is what actually clears/repopulates the app-shell
-// cache below). A stale HTTP-cached copy of sw.js means the browser
-// never even notices anything changed, so a deploy can silently never
-// reach users regardless of what else ships correctly.
-app.use(express.static(path.join(__dirname, '..', 'public'), {
+// sw.js's CACHE_NAME must change whenever any shell asset (or the
+// service worker's own caching logic) changes, or the browser's
+// service-worker update check -- which works by re-fetching this exact
+// file and diffing its bytes against what's installed -- sees no change
+// and never installs a new worker, silently freezing every browser that
+// already visited on whatever JS shipped at that point, no matter how
+// many real fixes are deployed afterward. This bit this app three times
+// (see public/sw.js's history) because a hand-typed version string is
+// easy to forget to bump. Instead, __CACHE_VERSION__ in the sw.js source
+// is replaced here, once at process startup, with a hash of the service
+// worker's own logic plus the actual current bytes of every file its
+// SHELL_ASSETS list names -- so any content change anywhere in the app
+// shell automatically produces a new cache name with no manual step to
+// forget. SHELL_ASSETS itself is parsed out of sw.js's own source (not
+// hand-duplicated here) so the two can never drift apart either.
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const swTemplate = fs.readFileSync(path.join(PUBLIC_DIR, 'sw.js'), 'utf-8');
+const shellAssetsMatch = swTemplate.match(/const SHELL_ASSETS = (\[[\s\S]*?\]);/);
+if (!shellAssetsMatch) throw new Error('public/sw.js: could not find its SHELL_ASSETS array to hash for cache-busting.');
+// Function(...) rather than JSON.parse: the array literal in sw.js is
+// plain JS (single-quoted strings, a trailing comma), not JSON, and this
+// is our own trusted static file, never user input.
+const shellAssetUrls = Function(`'use strict'; return (${shellAssetsMatch[1]});`)();
+const shellHash = crypto.createHash('sha256');
+shellHash.update(swTemplate.replace(/const CACHE_NAME = '[^']*';/, ''));
+for (const url of shellAssetUrls) {
+  const relPath = url === '/' ? 'index.html' : url.replace(/^\//, '');
+  shellHash.update(fs.readFileSync(path.join(PUBLIC_DIR, relPath)));
+}
+// Targets only the actual assignment line, not the placeholder's other
+// mention in this file's own explanatory comment above it.
+const swScript = swTemplate.replace(
+  /const CACHE_NAME = 'gvs-shell-__CACHE_VERSION__';/,
+  `const CACHE_NAME = 'gvs-shell-${shellHash.digest('hex').slice(0, 16)}';`
+);
+if (swScript === swTemplate) {
+  throw new Error("public/sw.js: the const CACHE_NAME = 'gvs-shell-__CACHE_VERSION__'; placeholder line was not found -- cache-busting would silently stop working.");
+}
+
+// Registered before express.static so this handler -- not the static
+// file on disk -- is what actually answers GET /sw.js.
+app.get('/sw.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  // Deliberately excluded from the 1-day cache the static middleware
+  // below applies to everything else: a stale HTTP-cached copy of sw.js
+  // means the browser never even notices anything changed.
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(swScript);
+});
+
+app.use(express.static(PUBLIC_DIR, {
   maxAge: config.isProd ? '1d' : 0,
-  setHeaders(res, filePath) {
-    if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
-  },
 }));
 
 // VERCEL_GIT_COMMIT_SHA is set automatically by Vercel for every
