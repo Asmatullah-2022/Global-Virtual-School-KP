@@ -207,7 +207,7 @@ Views.ai = {
         <p class="muted">Explain a lesson, practice a topic, or ask a question in English, Urdu or Pashto.</p>
         <div style="display:flex;gap:10px;margin:10px 0;flex-wrap:wrap">
           <select id="ai-lang"><option>English</option><option>Urdu</option><option>Pashto</option></select>
-          <select id="ai-grade"><option value="">Any grade</option>${[6, 7, 8, 9, 10, 11, 12].map((g) => `<option value="${g}">Grade ${g}</option>`).join('')}</select>
+          <select id="ai-grade"><option value="">Any grade</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => `<option value="${g}">Grade ${g}</option>`).join('')}</select>
         </div>
         <div class="ai-quick">
           <button data-q="Explain this topic simply.">Explain simply</button>
