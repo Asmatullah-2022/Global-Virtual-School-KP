@@ -26,17 +26,42 @@ if (!email) {
   process.exit(1);
 }
 
+// Printed FIRST and unmissable: the single most common way this script
+// silently "succeeds" without fixing production is UPSTASH_REDIS_REST_*
+// / KV_REST_API_* not actually being set in this shell -- db.backend
+// then falls back to the local JSON-file store, and every check below
+// runs against a database your live Vercel deployment never reads. If
+// this says "file", stop here and fix your env vars before continuing;
+// nothing below can be trusted otherwise.
+console.log(`Datastore backend in use: ${db.backend}${db.backend === 'redis' ? ` (host: ${db.redisHost})` : ''}`);
+if (db.backend !== 'redis') {
+  console.log('WARNING: not connected to Redis -- UPSTASH_REDIS_REST_URL/TOKEN or KV_REST_API_URL/TOKEN are missing or not exported in this shell.');
+  console.log('Anything this script does next will NOT affect your production (Vercel) app. Set those env vars from your Vercel project\'s Storage tab and re-run.');
+}
+
+const totalUsers = await db.count('users');
+console.log(`Total user records in this datastore: ${totalUsers}`);
+
 const user = await db.findOne('users', (u) => u.email.toLowerCase() === email.toLowerCase());
 if (!user) {
-  console.error(`No account found with email ${email}. Register normally in the app first, then run this again.`);
+  console.error(`No account found with email "${email.toLowerCase()}" in this datastore.`);
+  console.error('If the backend above is "redis" and you\'re certain you registered with this email, the email you log in with may differ slightly (check for typos, a different domain, or extra whitespace) -- registration and login both lowercase/trim the email the same way, so it must match exactly, case aside.');
   process.exit(1);
 }
+console.log(`Found account: email="${user.email}" id=${user.id} current role="${user.role}"`);
+
 if (user.role === 'admin') {
-  console.log(`${user.email} is already role: admin (id ${user.id}). Nothing to do.`);
+  console.log('Already role: admin -- nothing to change. If #/admin still refuses you after this, the problem is a stale JWT, not the database record -- see the login step below.');
   process.exit(0);
 }
 
 const previousRole = user.role;
 const updated = await db.update('users', user.id, { role: 'admin' });
-console.log(`Promoted ${updated.email} (id ${updated.id}) from role: ${previousRole} to role: admin.`);
-console.log('Log out and log back in through the app to get a token with the new role -- your current session token still has the old role baked in.');
+console.log(`Promoted: email="${updated.email}" id=${updated.id} role changed "${previousRole}" -> "${updated.role}".`);
+
+// Read the record back independently of the update() call's own return
+// value, as direct confirmation the write actually persisted rather
+// than trusting the in-memory result of the call that made it.
+const verify = await db.findOne('users', (u) => u.id === updated.id);
+console.log(`Verified by re-reading the record: role is now "${verify.role}".`);
+console.log('Next: log out, then log back in through the app -- this issues a brand-new JWT, and signToken() reads the role from this record at that moment, so the new token will carry role: "admin".');
