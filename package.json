@@ -8,7 +8,8 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "check": "node server/scripts/checkSyntax.js",
-    "create-admin": "node server/scripts/createAdmin.js"
+    "create-admin": "node server/scripts/createAdmin.js",
+    "promote-admin": "node server/scripts/promoteAdmin.js"
   },
   "engines": {
     "node": ">=18.0.0"
