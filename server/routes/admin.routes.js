@@ -14,7 +14,7 @@ router.use(requireAuth, requireRole('admin'));
 // operations is identical; validation of collection-specific fields still
 // happens client-side in the admin UI and should be hardened further
 // before a real production launch (e.g. per-collection JSON schema).
-const MANAGED_COLLECTIONS = ['updates', 'liveClasses', 'languageCourses', 'grades', 'knowledgeBase'];
+const MANAGED_COLLECTIONS = ['updates', 'liveClasses', 'languageCourses', 'grades', 'knowledgeBase', 'lessons', 'notes', 'quizzes'];
 
 router.get('/collections/:name', asyncHandler(async (req, res) => {
   if (!MANAGED_COLLECTIONS.includes(req.params.name)) return res.status(404).json({ error: 'Unknown collection.' });

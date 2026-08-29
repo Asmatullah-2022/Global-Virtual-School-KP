@@ -1,4 +1,44 @@
 [
+  { "id": "gr_1", "grade": 1, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "gk", "name": "General Knowledge" }
+  ]},
+  { "id": "gr_2", "grade": 2, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "gk", "name": "General Knowledge" }
+  ]},
+  { "id": "gr_3", "grade": 3, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "gk", "name": "General Knowledge" }
+  ]},
+  { "id": "gr_4", "grade": 4, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "science", "name": "General Science" }
+  ]},
+  { "id": "gr_5", "grade": 5, "subjects": [
+    { "id": "math", "name": "Mathematics" },
+    { "id": "english", "name": "English" },
+    { "id": "urdu", "name": "Urdu" },
+    { "id": "pashto", "name": "Pashto" },
+    { "id": "islamiat", "name": "Islamiat" },
+    { "id": "science", "name": "General Science" }
+  ]},
   { "id": "gr_6", "grade": 6, "subjects": [
     { "id": "math", "name": "Mathematics" },
     { "id": "science", "name": "General Science" },

@@ -60,9 +60,31 @@ Views.home = {
 };
 
 // ---------------- LEARN ----------------
+const LEARN_SECTIONS = {
+  videos: { icon: '🎬', label: 'Video Lessons', emptyTitle: 'No video lessons available yet', emptyBody: 'Video lessons for this subject will appear here once a GVS administrator publishes them.' },
+  notes: { icon: '📝', label: 'Notes', emptyTitle: 'No notes available yet', emptyBody: 'Downloadable PDF notes for this subject will appear here once a GVS administrator publishes them.' },
+  quiz: { icon: '❓', label: 'Quiz', emptyTitle: 'No quiz available yet', emptyBody: 'A quiz for this subject will appear here once a GVS administrator publishes one.' },
+};
+
+// Turns a lesson's videoUrl into something that actually plays inline --
+// a YouTube/Vimeo link becomes an embedded player (the realistic shape
+// for GVS LMS-hosted video links), anything else is treated as a direct
+// video file URL and played via the native <video> element. Never
+// fabricates a URL -- returns null (rendered as a clear error, not a
+// broken player) if videoUrl is missing entirely.
+function videoEmbedHtml(videoUrl) {
+  if (!videoUrl) return null;
+  const yt = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
+  if (yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+  const vimeo = videoUrl.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return `<iframe src="https://player.vimeo.com/video/${vimeo[1]}" allow="autoplay; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+  return `<video controls preload="metadata" src="${esc(videoUrl)}">Your browser does not support video playback.</video>`;
+}
+
 Views.learn = {
   render() {
-    const { grade, subjectId } = GVS.learnPath;
+    const { grade, subjectId, section } = GVS.learnPath;
+    if (grade && subjectId && section) return this.renderSection(grade, subjectId, section);
     if (grade && subjectId) return this.renderSubject(grade, subjectId);
     if (grade) return this.renderGrade(grade);
     return `
@@ -86,43 +108,166 @@ Views.learn = {
       <div class="breadcrumb"><button data-back-learn="root">Learn</button> / <button data-back-learn="grade">Grade ${grade}</button> / <span id="subject-name">Subject</span></div>
       <h2 id="subject-title">Subject</h2>
       <div class="grid four">
-        <button class="tile"><span class="ic">🎬</span><b>Video Lessons</b><span>Watch & resume</span></button>
-        <button class="tile"><span class="ic">📝</span><b>Notes</b><span>Downloadable PDFs</span></button>
-        <button class="tile"><span class="ic">❓</span><b>Quiz</b><span>Test yourself</span></button>
+        <button class="tile" data-section="videos"><span class="ic">🎬</span><b>Video Lessons</b><span>Watch & resume</span></button>
+        <button class="tile" data-section="notes"><span class="ic">📝</span><b>Notes</b><span>Downloadable PDFs</span></button>
+        <button class="tile" data-section="quiz"><span class="ic">❓</span><b>Quiz</b><span>Test yourself</span></button>
         <button class="tile" data-nav="ai"><span class="ic">🤖</span><b>Ask AI Teacher</b><span>Get help now</span></button>
-      </div>
-      <div class="state-box" style="margin-top:16px">
-        <span class="emoji">🚧</span>
-        <b>Content coming from GVS LMS</b>
-        <p>Video lessons, notes and quizzes for this subject are published by GVS administrators through the admin panel and will appear here once added.</p>
       </div>
     </section>`;
   },
+  renderSection(grade, subjectId, section) {
+    const meta = LEARN_SECTIONS[section];
+    if (!meta) return stateBoxWrap('Unknown learning section.');
+    return `
+    <section class="section">
+      <div class="breadcrumb"><button data-back-learn="root">Learn</button> / <button data-back-learn="grade">Grade ${grade}</button> / <button data-back-learn="subject">${esc(subjectId)}</button> / ${meta.icon} ${meta.label}</div>
+      <h2>${meta.icon} <span id="subject-name">Subject</span> — ${meta.label}</h2>
+      <div id="learn-section-body">${skeletons(3)}</div>
+    </section>`;
+  },
   async afterRender() {
-    const { grade, subjectId } = GVS.learnPath;
+    const { grade, subjectId, section } = GVS.learnPath;
     try {
       if (!grade) {
         const { grades } = await API.get('/api/content/grades');
         document.querySelector('#grade-grid').innerHTML = grades
           .map((g) => `<button class="course" data-grade="${g.grade}"><span>GRADE ${g.grade}</span><b>Continue Learning</b><small>${g.subjects.length} subjects</small></button>`)
           .join('') || stateBox({ title: 'No grades published yet', body: 'An administrator has not published grade content yet.' });
-      } else if (grade && !subjectId) {
+      } else if (grade && subjectId) {
+        const { grade: g } = await API.get(`/api/content/grades/${grade}`);
+        const subj = g.subjects.find((s) => s.id === subjectId);
+        const subjName = subj ? subj.name : subjectId;
+        const nameEl = document.querySelector('#subject-name');
+        if (nameEl) nameEl.textContent = subjName;
+        const titleEl = document.querySelector('#subject-title');
+        if (titleEl) titleEl.textContent = subjName;
+        if (section) await this.loadSection(grade, subjectId, section);
+      } else {
         const { grade: g } = await API.get(`/api/content/grades/${grade}`);
         document.querySelector('#subject-grid').innerHTML = g.subjects
           .map((s) => `<button class="course" data-subject="${s.id}"><span>SUBJECT</span><b>${esc(s.name)}</b><small>Videos • Notes • Quiz</small></button>`)
           .join('');
-      } else {
-        const { grade: g } = await API.get(`/api/content/grades/${grade}`);
-        const subj = g.subjects.find((s) => s.id === subjectId);
-        if (subj) {
-          document.querySelector('#subject-title').textContent = subj.name;
-          document.querySelector('#subject-name').textContent = subj.name;
-        }
       }
     } catch (e) {
-      const target = document.querySelector('#grade-grid') || document.querySelector('#subject-grid');
+      const target = document.querySelector('#grade-grid') || document.querySelector('#subject-grid') || document.querySelector('#learn-section-body');
       if (target) target.innerHTML = stateBox({ emoji: '⚠️', title: 'Unable to load learning content', body: e.message, retry: true });
     }
+  },
+  async loadSection(grade, subjectId, section) {
+    const body = document.querySelector('#learn-section-body');
+    const meta = LEARN_SECTIONS[section];
+    try {
+      if (section === 'videos') {
+        const { lessons } = await API.get(`/api/content/lessons?grade=${encodeURIComponent(grade)}&subject=${encodeURIComponent(subjectId)}`);
+        body.innerHTML = lessons.length ? this.videosHtml(lessons) : stateBox({ emoji: '🎬', title: meta.emptyTitle, body: meta.emptyBody });
+        this.bindVideoPlayers(body);
+      } else if (section === 'notes') {
+        const { notes } = await API.get(`/api/content/notes?grade=${encodeURIComponent(grade)}&subject=${encodeURIComponent(subjectId)}`);
+        body.innerHTML = notes.length ? this.notesHtml(notes) : stateBox({ emoji: '📝', title: meta.emptyTitle, body: meta.emptyBody });
+      } else if (section === 'quiz') {
+        const { quizzes } = await API.get(`/api/content/quizzes?grade=${encodeURIComponent(grade)}&subject=${encodeURIComponent(subjectId)}`);
+        if (!quizzes.length) { body.innerHTML = stateBox({ emoji: '❓', title: meta.emptyTitle, body: meta.emptyBody }); return; }
+        this.renderQuizList(body, quizzes);
+      }
+    } catch (e) {
+      body.innerHTML = stateBox({ emoji: '⚠️', title: `Unable to load ${meta.label.toLowerCase()}`, body: e.message, retry: true });
+      const retry = body.querySelector('[data-retry]');
+      if (retry) retry.addEventListener('click', () => this.loadSection(grade, subjectId, section));
+    }
+  },
+  videosHtml(lessons) {
+    return `<div class="grid two">${lessons
+      .map(
+        (l, i) => `<div class="card lesson-card">
+          ${l.thumbnailUrl ? `<img class="lesson-thumb" src="${esc(l.thumbnailUrl)}" alt="">` : `<div class="lesson-thumb lesson-thumb-placeholder">🎬</div>`}
+          <span class="pill">Lesson ${esc(l.lessonNumber ?? i + 1)}</span>
+          <b>${esc(l.title || 'Untitled lesson')}</b>
+          ${l.durationLabel ? `<span class="muted">${esc(l.durationLabel)}</span>` : ''}
+          <button class="primary" style="margin-top:8px" data-play-lesson="${l.id}">▶ Play</button>
+          <div class="video-wrap hidden" id="player-${l.id}"></div>
+        </div>`
+      )
+      .join('')}</div>`;
+  },
+  bindVideoPlayers(body) {
+    body.querySelectorAll('[data-play-lesson]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.playLesson;
+        const wrap = document.querySelector(`#player-${id}`);
+        if (!wrap.classList.contains('hidden')) return; // already playing
+        const { lessons } = await API.get(`/api/content/lessons?grade=${encodeURIComponent(GVS.learnPath.grade)}&subject=${encodeURIComponent(GVS.learnPath.subjectId)}`);
+        const lesson = lessons.find((l) => l.id === id);
+        const embed = lesson && videoEmbedHtml(lesson.videoUrl);
+        wrap.innerHTML = embed || `<div class="form-error">This lesson has no video URL set.</div>`;
+        wrap.classList.remove('hidden');
+      })
+    );
+  },
+  notesHtml(notes) {
+    return `<div class="grid two">${notes
+      .map(
+        (n) => `<div class="card">
+          <span class="ic">📄</span>
+          <b>${esc(n.title || 'Untitled note')}</b>
+          ${n.fileUrl ? `<a class="secondary" style="text-align:center;text-decoration:none;margin-top:8px" href="${esc(n.fileUrl)}" target="_blank" rel="noopener">Open / Download</a>` : `<span class="muted">No file attached</span>`}
+        </div>`
+      )
+      .join('')}</div>`;
+  },
+  renderQuizList(body, quizzes) {
+    body.innerHTML = `<div class="grid two">${quizzes
+      .map((q) => `<button class="course" data-start-quiz="${q.id}"><span>QUIZ</span><b>${esc(q.title || 'Untitled quiz')}</b><small>${(this.parseQuizQuestions(q) || []).length} questions</small></button>`)
+      .join('')}</div><div id="quiz-play-area" style="margin-top:16px"></div>`;
+    body.querySelectorAll('[data-start-quiz]').forEach((btn) =>
+      btn.addEventListener('click', () => this.renderQuizPlayer(quizzes.find((q) => q.id === btn.dataset.startQuiz)))
+    );
+  },
+  // The generic admin form (see adminForm() below) only produces flat
+  // text/number/select fields, so a quiz's questions are authored as one
+  // JSON textarea field rather than a bespoke nested editor -- reusing
+  // the existing generic CRUD instead of building a second content
+  // system. This parses that JSON defensively: malformed input renders a
+  // clear error instead of crashing the page.
+  parseQuizQuestions(quiz) {
+    if (Array.isArray(quiz.questions)) return quiz.questions;
+    try {
+      const parsed = JSON.parse(quiz.questions || '[]');
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  },
+  renderQuizPlayer(quiz) {
+    const area = document.querySelector('#quiz-play-area');
+    const questions = this.parseQuizQuestions(quiz);
+    if (!questions || !questions.length) {
+      area.innerHTML = stateBox({ emoji: '⚠️', title: 'This quiz could not be loaded', body: 'Its questions are missing or not formatted correctly. Please tell an administrator.' });
+      return;
+    }
+    area.innerHTML = `<div class="form-card">
+      <h3>${esc(quiz.title || 'Quiz')}</h3>
+      ${questions
+        .map(
+          (q, qi) => `<div class="quiz-question">
+            <b>${qi + 1}. ${esc(q.question || '')}</b>
+            ${(q.options || [])
+              .map((opt, oi) => `<label class="quiz-option"><input type="radio" name="quiz-q${qi}" value="${oi}"> ${esc(opt)}</label>`)
+              .join('')}
+          </div>`
+        )
+        .join('')}
+      <button class="primary" id="quiz-submit" style="width:100%;margin-top:14px">Submit Quiz</button>
+      <div id="quiz-result"></div>
+    </div>`;
+    document.querySelector('#quiz-submit').addEventListener('click', () => {
+      let correctCount = 0;
+      questions.forEach((q, qi) => {
+        const picked = area.querySelector(`input[name="quiz-q${qi}"]:checked`);
+        if (picked && Number(picked.value) === Number(q.correctIndex)) correctCount++;
+      });
+      document.querySelector('#quiz-result').innerHTML =
+        `<div class="state-box" style="margin-top:14px"><span class="emoji">${correctCount === questions.length ? '🎉' : '📊'}</span><b>Your score: ${correctCount} / ${questions.length}</b></div>`;
+    });
   },
 };
 
@@ -525,7 +670,7 @@ Views.admin = {
     <section class="section">
       <h2>Admin Dashboard</h2>
       <div class="admin-tabs" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        ${['overview', 'updates', 'liveClasses', 'languageCourses', 'users'].map((t, i) => `<button class="ghost admin-tab" data-tab="${t}" style="padding:9px 14px${i === 0 ? ';background:var(--green);color:#fff;border-color:var(--green)' : ''}">${adminTabLabel(t)}</button>`).join('')}
+        ${['overview', 'updates', 'liveClasses', 'languageCourses', 'lessons', 'notes', 'quizzes', 'users'].map((t, i) => `<button class="ghost admin-tab" data-tab="${t}" style="padding:9px 14px${i === 0 ? ';background:var(--green);color:#fff;border-color:var(--green)' : ''}">${adminTabLabel(t)}</button>`).join('')}
       </div>
       <div id="admin-body">${skeletons(3)}</div>
     </section>`;
@@ -545,7 +690,7 @@ Views.admin = {
 };
 
 function adminTabLabel(t) {
-  return { overview: 'Overview', updates: 'Updates', liveClasses: 'Live Classes', languageCourses: 'Language Courses', users: 'Users' }[t];
+  return { overview: 'Overview', updates: 'Updates', liveClasses: 'Live Classes', languageCourses: 'Language Courses', lessons: 'Video Lessons', notes: 'Notes', quizzes: 'Quizzes', users: 'Users' }[t];
 }
 
 async function renderAdminTab(tab) {
@@ -556,6 +701,9 @@ async function renderAdminTab(tab) {
     if (tab === 'updates') return await renderAdminCollection(body, 'updates', updateFieldSchema());
     if (tab === 'liveClasses') return await renderAdminCollection(body, 'liveClasses', liveClassFieldSchema());
     if (tab === 'languageCourses') return await renderAdminCollection(body, 'languageCourses', languageCourseFieldSchema());
+    if (tab === 'lessons') return await renderAdminCollection(body, 'lessons', lessonFieldSchema());
+    if (tab === 'notes') return await renderAdminCollection(body, 'notes', noteFieldSchema());
+    if (tab === 'quizzes') return await renderAdminCollection(body, 'quizzes', quizFieldSchema());
     if (tab === 'users') return await renderAdminUsers(body);
   } catch (e) {
     body.innerHTML = stateBox({ emoji: '⚠️', title: 'Unable to load', body: e.message, retry: true });
@@ -622,6 +770,41 @@ function languageCourseFieldSchema() {
     { key: 'flag', label: 'Flag emoji', type: 'text' },
     { key: 'overview', label: 'Overview', type: 'textarea' },
     { key: 'status', label: 'Status', type: 'select', options: ['published', 'unpublished'] },
+  ];
+}
+const LEARN_GRADE_OPTIONS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+function lessonFieldSchema() {
+  return [
+    { key: 'grade', label: 'Grade', type: 'select', options: LEARN_GRADE_OPTIONS, required: true },
+    { key: 'subjectId', label: 'Subject ID (must match the subject\'s id, e.g. "math")', type: 'text', required: true },
+    { key: 'title', label: 'Lesson Title', type: 'text', required: true },
+    { key: 'lessonNumber', label: 'Lesson Number', type: 'number', required: true },
+    { key: 'thumbnailUrl', label: 'Thumbnail URL (optional)', type: 'text' },
+    { key: 'durationLabel', label: 'Duration (optional, e.g. "12:34")', type: 'text' },
+    { key: 'videoUrl', label: 'Video URL (YouTube/Vimeo link, or a direct video file URL)', type: 'text', required: true },
+    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'published'] },
+  ];
+}
+function noteFieldSchema() {
+  return [
+    { key: 'grade', label: 'Grade', type: 'select', options: LEARN_GRADE_OPTIONS, required: true },
+    { key: 'subjectId', label: 'Subject ID (must match the subject\'s id, e.g. "math")', type: 'text', required: true },
+    { key: 'title', label: 'Note Title', type: 'text', required: true },
+    { key: 'fileUrl', label: 'PDF File URL', type: 'text', required: true },
+    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'published'] },
+  ];
+}
+function quizFieldSchema() {
+  return [
+    { key: 'grade', label: 'Grade', type: 'select', options: LEARN_GRADE_OPTIONS, required: true },
+    { key: 'subjectId', label: 'Subject ID (must match the subject\'s id, e.g. "math")', type: 'text', required: true },
+    { key: 'title', label: 'Quiz Title', type: 'text', required: true },
+    {
+      key: 'questions',
+      label: 'Questions (JSON array: [{"question":"...","options":["...","..."],"correctIndex":0}])',
+      type: 'textarea',
+    },
+    { key: 'status', label: 'Status', type: 'select', options: ['draft', 'published'] },
   ];
 }
 

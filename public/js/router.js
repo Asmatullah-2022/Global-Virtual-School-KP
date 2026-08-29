@@ -4,18 +4,22 @@ const Router = {
 
   go(view) {
     if (!this.routes.includes(view)) view = 'home';
-    if (view !== 'learn') GVS.learnPath = { grade: null, subjectId: null };
+    if (view !== 'learn') GVS.learnPath = { grade: null, subjectId: null, section: null };
     if (view !== 'languages') GVS.languageCourseId = null;
     location.hash = `#/${view}`;
   },
 
   async render() {
     const hash = location.hash.replace(/^#\//, '') || 'home';
-    const [view, a, b] = hash.split('/');
+    const [view, a, b, c] = hash.split('/');
     const resolvedView = this.routes.includes(view) ? view : 'home';
 
     if (resolvedView === 'learn') {
-      GVS.learnPath = { grade: a || null, subjectId: b || null };
+      // section is the 4th path segment -- 'videos' | 'notes' | 'quiz' --
+      // selected from the subject page's three cards; null on the plain
+      // grade/subject pages, same as subjectId is null on the plain
+      // grade page.
+      GVS.learnPath = { grade: a || null, subjectId: b || null, section: c || null };
     }
     if (resolvedView === 'languages') {
       GVS.languageCourseId = a || null;
@@ -41,7 +45,7 @@ const Router = {
   initDelegatedEvents() {
     document.querySelector('#main').addEventListener('click', (event) => {
       const el = event.target.closest(
-        '[data-nav],[data-external],[data-grade],[data-subject],[data-back-learn],[data-course],[data-back-languages],[data-share],[data-retry]'
+        '[data-nav],[data-external],[data-grade],[data-subject],[data-section],[data-back-learn],[data-course],[data-back-languages],[data-share],[data-retry]'
       );
       if (!el) return;
 
@@ -58,8 +62,12 @@ const Router = {
       // hash directly instead, same as the subject/course handlers below.
       if (el.dataset.grade !== undefined) { location.hash = `#/learn/${el.dataset.grade}`; return; }
       if (el.dataset.subject !== undefined) { location.hash = `#/learn/${GVS.learnPath.grade}/${el.dataset.subject}`; return; }
+      if (el.dataset.section !== undefined) { location.hash = `#/learn/${GVS.learnPath.grade}/${GVS.learnPath.subjectId}/${el.dataset.section}`; return; }
       if (el.dataset.backLearn !== undefined) {
-        location.hash = el.dataset.backLearn === 'root' ? '#/learn' : `#/learn/${GVS.learnPath.grade}`;
+        location.hash =
+          el.dataset.backLearn === 'root' ? '#/learn'
+          : el.dataset.backLearn === 'grade' ? `#/learn/${GVS.learnPath.grade}`
+          : `#/learn/${GVS.learnPath.grade}/${GVS.learnPath.subjectId}`; // 'subject' -- back from a video/notes/quiz section
         return;
       }
       if (el.dataset.course !== undefined) { location.hash = `#/languages/${el.dataset.course}`; return; }
